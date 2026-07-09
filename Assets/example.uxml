@@ -1,4 +1,5 @@
 <ui:UXML xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" noNamespaceSchemaLocation="../UIElementsSchema/UIElements.xsd" editor-extension-mode="False">
+    <ui:Template name="example 1" src="project://database/Assets/example%201.uxml?fileID=9197481963319205126&amp;guid=5671b12c751b2984db85892bda9f8b0d&amp;type=3#example 1"/>
     <ui:VisualElement name="main" style="flex-grow: 1; flex-direction: row; align-items: stretch; flex-wrap: nowrap; color: rgb(255, 255, 255); transform-origin: 50px;">
         <ui:VisualElement name="left" style="flex-grow: initial; width: 200px; background-color: rgb(51, 51, 51);">
             <ui:Label text="Label" name="LeftLabel" style="font-size: 50px; text-shadow: 12px 12px 1px rgb(255, 0, 0);"/>
@@ -13,4 +14,5 @@
         <ui:Label text="123" style="color: rgb(255, 0, 0); -unity-text-outline-width: 1px; -unity-text-outline-color: rgb(0, 255, 22); font-size: 45px; text-shadow: 2px 2px 2px rgb(194, 51, 51); letter-spacing: 12px; word-spacing: 23px; -unity-paragraph-spacing: 12px; -unity-text-auto-size: none; rotate: 10deg; translate: 0% 254%; -unity-font-definition: url(&quot;project://database/Assets/Fonts/LiberationSans.ttf?fileID=12800000&amp;guid=36239efaf3d4f7a4abcf02b96f0fd7ec&amp;type=3#LiberationSans&quot;);"/>
         <ui:Label text="Label"/>
     </ui:VisualElement>
+    <ui:Instance template="example 1" name="TemplateContainer" style="align-items: flex-start; flex-direction: column-reverse;"/>
 </ui:UXML>

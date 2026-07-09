@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Xml;
+using Unity.VisualScripting;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -12,14 +13,40 @@ using UnityEngine.UIElements;
 public class UxmlToCodeWindow : EditorWindow
 {
     VisualTreeAsset asset;
-    int RootCanvasID = 0;
-    bool AlwaysAppendIdOnName = false;
-    bool WritePath = true;
+    static int RootCanvasID = 0;
+    static bool AlwaysAppendIdOnName = false;
+    static bool WritePath = true;
 
     Vector2 _scroll;
     Vector2 _log_scroll;
     string _output = string.Empty;
     string _log = string.Empty;
+    private Vector2 _tscroll;
+
+    public class ParseContext
+    {
+        public int CurrentID;
+        public List<string> UsedNames = new List<string>();
+        public int ErrorCount;
+        public bool AlwaysAppendId;
+        public bool WritePath;
+        public StringBuilder Log;
+        public int startID;
+        public ParseContext(int startID, bool alwaysAppendId, bool writePath, StringBuilder log)
+        {
+            this.startID = startID;
+            CurrentID = startID - 1;
+            AlwaysAppendId = alwaysAppendId;
+            WritePath = writePath;
+            Log = log ?? new StringBuilder();
+        }
+
+        public int NextID()
+        {
+            CurrentID++;
+            return CurrentID;
+        }
+    }
 
     [MenuItem("UXML To Code/UXML To Code")]
     public static void OpenWindow()
@@ -45,6 +72,7 @@ public class UxmlToCodeWindow : EditorWindow
         }
 
         EditorGUILayout.Space();
+        _tscroll = EditorGUILayout.BeginScrollView(_tscroll);
         EditorGUILayout.LabelField("Generated Output:", EditorStyles.boldLabel);
 
         _scroll = EditorGUILayout.BeginScrollView(_scroll);
@@ -56,6 +84,7 @@ public class UxmlToCodeWindow : EditorWindow
 
         _log_scroll = EditorGUILayout.BeginScrollView(_log_scroll);
         EditorGUILayout.TextArea(_log, GUILayout.ExpandHeight(true));
+        EditorGUILayout.EndScrollView();
         EditorGUILayout.EndScrollView();
 
         EditorGUILayout.Space();
@@ -75,12 +104,34 @@ public class UxmlToCodeWindow : EditorWindow
             EditorUtility.DisplayDialog("Error", "Please assign a VisualTreeAsset.", "OK");
             return;
         }
-
+        Node.templateToPath.Clear();
+        var codesb = new StringBuilder();
+        var logsb = new StringBuilder();
         var path = AssetDatabase.GetAssetPath(asset);
+        var context = new ParseContext(RootCanvasID, AlwaysAppendIdOnName, WritePath, logsb);
+        try
+        {
+            var error = StartProcess(path, codesb, context, template: false, parent: null);
+            if (error > 0)
+            {
+                EditorUtility.DisplayDialog("Error", $"Has happend: {error} error(s),Please check log", "OK");
+            }
+        }
+        catch (Exception ex) {
+            Debug.LogError(ex);
+        }
+
+        _log = logsb.ToString();
+        _output = codesb.ToString();
+    }
+
+    public static int StartProcess(string path, StringBuilder codesb, ParseContext context, bool template, Node parent,string varname = "", int baseIndent = 0)
+    {
         if (string.IsNullOrEmpty(path) || !File.Exists(path))
         {
-            EditorUtility.DisplayDialog("Error", $"Couldn't find asset file for VisualTreeAsset. Asset path:{path}", "OK");
-            return;
+            context.Log?.AppendLine($"Error: Couldn't find asset file for VisualTreeAsset. Asset path:{path}");
+            context.ErrorCount++;
+            return context.ErrorCount;
         }
 
         string uxmlText;
@@ -90,8 +141,9 @@ public class UxmlToCodeWindow : EditorWindow
         }
         catch (Exception ex)
         {
-            EditorUtility.DisplayDialog("Error", $"Failed to read asset file: {ex.Message}", "OK");
-            return;
+            context.Log?.AppendLine($"Error: Failed to read asset file: {ex.Message}");
+            context.ErrorCount++;
+            return context.ErrorCount;
         }
 
         var reader = new XmlDocument();
@@ -101,225 +153,361 @@ public class UxmlToCodeWindow : EditorWindow
         }
         catch (Exception ex)
         {
-            EditorUtility.DisplayDialog("Error", $"Failed to parse UXML: {ex.Message}", "OK");
-            return;
+            context.Log?.AppendLine($"Error: Failed to parse UXML: {ex.Message}");
+            context.ErrorCount++;
+            return context.ErrorCount;
         }
 
-        var sb = new StringBuilder();
-        var parser = new UxmlParser(RootCanvasID, AlwaysAppendIdOnName, sb,WritePath);
-        parser.Parse(reader);
-        _log = sb.ToString();
-        var codeSb = new StringBuilder();
+        var parser = new UxmlParser(context, template, parent);
+        parser.Parse(reader, varname);
+        Node firstRealNode = parser.Nodes.FirstOrDefault(n => n.type != NodeType.Message);
         foreach (var item in parser.Nodes)
         {
-            item.ToCode(codeSb);
+            context.ErrorCount += item.ToCode(codesb, context, baseIndent);
         }
-        
-        codeSb.Replace("new Color(1f, 0f, 0f, 1f)", "Color.red");
-        codeSb.Replace("new Color(0f, 0f, 0f, 1f)", "Color.black");
-        codeSb.Replace("new Color(0f, 0f, 1f, 1f)", "Color.blue");
-        codeSb.Replace("new Color(0f, 1f, 0f, 1f)", "Color.green");
-        codeSb.Replace("new Color(0f, 0f, 0f, 0f)", "Color.clear");
-        codeSb.Replace("new Color(0f, 1f, 1f, 1f)", "Color.cyan");
-        codeSb.Replace("new Color(1f, 1f, 1f, 1f)", "Color.white");
-        codeSb.Replace("new Color(0.1f, 0.1f, 0.1f, 1f)", "Color.gray1");
-        codeSb.Replace("new Color(0.2f, 0.2f, 0.2f, 1f)", "Color.gray2");
-        // fuck it,im lazy
-        _output = codeSb.ToString();
-        if(parser.errorCount > 0)
-        {
-            EditorUtility.DisplayDialog("Error", $"Has happend: {parser.errorCount} error(s),Please check log", "OK");
+        codesb.Replace("new Color(1f, 0f, 0f, 1f)", "Color.red");
+        codesb.Replace("new Color(0f, 0f, 0f, 1f)", "Color.black");
+        codesb.Replace("new Color(0f, 0f, 1f, 1f)", "Color.blue");
+        codesb.Replace("new Color(0f, 1f, 0f, 1f)", "Color.green");
+        codesb.Replace("new Color(0f, 0f, 0f, 0f)", "Color.clear");
+        codesb.Replace("new Color(0f, 1f, 1f, 1f)", "Color.cyan");
+        codesb.Replace("new Color(1f, 1f, 1f, 1f)", "Color.white");
+        codesb.Replace("new Color(0.1f, 0.1f, 0.1f, 1f)", "Color.gray1");
+        codesb.Replace("new Color(0.2f, 0.2f, 0.2f, 1f)", "Color.gray2");
 
-        }
+        return context.ErrorCount;
     }
+
     class UxmlParser
     {
-        int _rootCanvasID;
-        bool _alwaysAppend;
-        StringBuilder _logSb;
-        int _cid = -1;
-        List<string> usedName = new();
+        ParseContext _context;
+        bool _isTemplate;
+        Node _parentNode;
         public List<Node> Nodes { get; } = new List<Node>();
 
-        public UxmlParser(int rootCanvasID, bool alwaysAppend, StringBuilder logSb,bool writePath)
+        public UxmlParser(ParseContext context, bool isTemplate, Node parent)
         {
-            _rootCanvasID = rootCanvasID;
-            _alwaysAppend = alwaysAppend;
-            _logSb = logSb ?? new StringBuilder();
-            _cid = _rootCanvasID - 1;
-            _WritePath = writePath;
+            _context = context;
+            _isTemplate = isTemplate;
+            _parentNode = parent;
+        }
+        void Log(string msg)
+        {
+            _context.Log?.AppendLine(msg);
         }
 
-        public int NextID { get { _cid++; return _cid; } }
-        public int errorCount = 0;
-        private bool _WritePath;
-
-        public void Parse(XmlDocument reader)
+        public void Parse(XmlDocument reader,string rootVarname)
         {
-            _logSb.Clear();
-            errorCount = 0;
-            PrintNodes(null, reader.ChildNodes, _logSb);
+            PrintNodes(_parentNode, reader.ChildNodes, rootVarname);
         }
 
-        void PrintNodes(Node parent, XmlNodeList nodes, StringBuilder sb)
+        void PrintNodes(Node parent, XmlNodeList nodes, string rootVarname)
         {
-            var ParentMsg = string.Empty;
-            sb.AppendLine($"--- Starting Proccess node, parent.id:{parent?.id} ---");
+            if (_isTemplate && parent == null)
+            {
+                Log("illegal args! template=true parent=null! override template to false!");
+                _context.ErrorCount++;
+                _isTemplate = false;
+            }
+
+            Log($"--- Starting Proccess node, parent.id:{parent?.id} ---");
             if (parent != null)
             {
                 if (parent.type != NodeType.Label)
                 {
-                        sb.AppendLine($"    Correct parent type! parent.name:{parent?.GetName(sb)}");
+                    Log($"    Correct parent type! parent.name:{parent?.GetName(_context.Log)}");
                 }
                 else
                 {
-                    ParentMsg = $"    Error!Label(name:{parent.GetName(sb)},id:{parent.id}) is parent! Using id {_rootCanvasID}(root canvas) be parent\n";
-                    errorCount++;
-                    sb.Append(ParentMsg);
-                    parent = Nodes.Find(x => x.id == _rootCanvasID);
-                    var mn = new Node() { 
+                    string errMsg = $"    Error!Label(name:{parent.GetName(_context.Log)},id:{parent.id} {(parent.parent == null ? $"{parent.indexInParent}th child of root" : $"{parent.indexInParent}th child of {parent.parent?.GetName(_context.Log)}")}) is parent! Refuse to continue!\n";
+                    _context.ErrorCount++;
+                    Log(errMsg);
+                    parent = Nodes.Find(x => x.id == _context.startID);
+                    var mn = new Node()
+                    {
                         type = NodeType.Message,
-                        message = ParentMsg,
+                        message = errMsg,
                     };
                     Nodes.Add(mn);
-                    if (parent == null) Debug.LogAssertion($"PrevMessage:{sb.ToString()}\nERROR:Failed to find root(id:{_rootCanvasID})!");
+                    if (parent == null)
+                        Debug.LogAssertion($"PrevMessage:{_context.Log?.ToString()}\nERROR:Failed to find root canvas!");
+                    return;
                 }
             }
             else
             {
-                sb.AppendLine($"parent:null due this is Root");
+                Log("parent:null due this is Root");
             }
 
+            int childIndex = 1;
             foreach (XmlNode node in nodes)
             {
-                var nodeMsg = string.Empty;
                 if (node is XmlElement element)
                 {
-                    sb.AppendLine($"    Node Name: {node.Name} Type: {node.NodeType} Value: {node.Value} {node.InnerText}");
-                    var TryToSplitUIType = node.Name.Split(":");
-                    if (TryToSplitUIType.Length > 1)
+                    Log($"    Node Name: {node.Name} Type: {node.NodeType} Value: {node.Value} {node.InnerText}");
+                    var parts = node.Name.Split(":");
+                    if (parts.Length > 1)
                     {
-                        sb.AppendLine($"        UI Type: {TryToSplitUIType[0]} Element Type: {TryToSplitUIType[1]}");
-                        var n = new Node();
-                        var id = NextID;
-                        n.id = id;
-                        sb.AppendLine($"        Node.id:{n.id}");
-                        NodeType t = NodeType.VisualElement;
+                        Log($"        UI Type: {parts[0]} Element Type: {parts[1]}");
+                        NodeType t;
                         try
                         {
-                            t = Enum.Parse<NodeType>(TryToSplitUIType[1], true);
-                        }catch(ArgumentException e)
+                            t = Enum.Parse<NodeType>(parts[1], true);
+                        }
+                        catch (ArgumentException e)
                         {
-                            errorCount++;
-                            nodeMsg += "Error! "+e.Message + $" --- \"{TryToSplitUIType[1]}\" failed to convent! Only Supported with Label and VisualElement! Replcae it to VisualElement!";
-                            sb.AppendLine("Error! " + e.Message + $" --- \"{TryToSplitUIType[1]}\" has not supported! Only Supported with Label and VisualElement!");
+                            _context.ErrorCount++;
+                            Log($"Error! {e.Message} --- \"{parts[1]}\" failed to convert! Replaced with VisualElement!");
+                            var mn = new Node()
+                            {
+                                type = NodeType.Message,
+                                message = $"Error! {e.Message} --- \"{parts[1]}\" failed to convert! Replaced with VisualElement!",
+                            };
+                            Nodes.Add(mn);
+                            t = NodeType.VisualElement;
+                        }
+                        if (t == NodeType.Template)
+                        {
+                            Log($"    trying to resolve template...");
+                            string src = null, name = null;
+                            foreach (XmlAttribute attr in element.Attributes)
+                            {
+                                Log($"        Attribute: {attr.Name} Value: {attr.Value}");
+                                if (attr.Name == "src") src = attr.Value;
+                                if (attr.Name == "name") name = attr.Value;
+                            }
+                            if (!string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(src))
+                            {
+                                var templatePath = ConvertProjectUrlToAbsolutePath(src);
+                                Node.templateToPath[name] = templatePath;
+                                Log($"    --- Done! {name}->{templatePath}---");
+                            }
+                            else
+                            {
+                                _context.ErrorCount++;
+                                Log($"Error! Failed to resolve Template due name or src not set, name:{name} src:{src}");
+                                var mn = new Node()
+                                {
+                                    type = NodeType.Message,
+                                    message = $"Error! Failed to resolve Template due name or src not set, name:{name} src:{src}",
+                                };
+                                Nodes.Add(mn);
+                            }
+                            continue;
+                        }
+                        bool hasName = false;
+                        var n = new Node();
+                        int id = _context.NextID();
+                        n.id = id;
+
+                        if (t == NodeType.Instance)
+                        {
+                            var instanceNode = new Node();
+                            instanceNode.type = NodeType.Instance;
+                            instanceNode.parent = parent;
+                            instanceNode.indexInParent = childIndex++;
+                            foreach (XmlAttribute attr in element.Attributes)
+                            {
+                                Log($"        Attribute: {attr.Name} Value: {attr.Value}");
+                                if (attr.Name == "template")
+                                    instanceNode.template = attr.Value;
+                                else if (attr.Name == "style")
+                                    instanceNode.styles = StyleParser.Parse(attr.Value);
+                                else if (attr.Name == "name")
+                                {
+                                    string rawName = attr.Value;
+                                    string finalName = GenerateUniqueName(rawName, id, out _);
+                                    if (_isTemplate) finalName = rootVarname;
+                                    instanceNode.SetName(finalName);
+                                    hasName = true;
+                                }
+                            }
+                            if (!hasName)
+                            {
+                                string autoName = GenerateUniqueName(t.ToString(), id, out _);
+                                instanceNode.SetName(autoName);
+                            }
+                            Nodes.Add(instanceNode);
+                            continue;
+                        }
+                        bool istemplateRoot = false;
+                        if (_isTemplate && t == NodeType.UXML)
+                        {
+                            Log($"        In template! Override UXML to VisualElement!");
+                            t = NodeType.VisualElement;
+                            istemplateRoot = true;
                         }
                         n.type = t;
                         n.parent = parent;
-                        var HasSetName = false;
-                        foreach (XmlNode childNode in element.Attributes)
+                        n.indexInParent = childIndex++;
+
+                        foreach (XmlAttribute attr in element.Attributes)
                         {
-                            sb.AppendLine($"        Attribute: {childNode.Name} Value: {childNode.Value}");
-                            switch (childNode.Name)
+                            Log($"        Attribute: {attr.Name} Value: {attr.Value}");
+                            switch (attr.Name)
                             {
                                 case "name":
-                                    var appendId = _alwaysAppend;
-                                    var name = childNode.Value;
-                                    var willAppendID = usedName.Count(x=>x==name);
-                                    if (usedName.Contains(name))
-                                    {
-                                        appendId = true;
-                                    }
-                                    usedName.Add(name);
-                                    if (_alwaysAppend) willAppendID = n.id;
-                                    n.SetName(appendId ? $"{name}_{willAppendID}" : name);
-                                    HasSetName = true;
+                                    string rawName = attr.Value;
+                                    string finalName = GenerateUniqueName(rawName, id, out _);
+                                    if (_isTemplate && istemplateRoot) finalName = rootVarname;
+                                    n.SetName(finalName);
+                                    hasName = true;
                                     break;
                                 case "text":
-                                    n.text = childNode.Value;
+                                    n.text = attr.Value;
                                     break;
                                 case "style":
-                                    n.styles = DisplayKit.StyleParser.Parse(childNode.Value);
+                                    n.styles = StyleParser.Parse(attr.Value);
                                     break;
                                 default:
                                     break;
                             }
                         }
-                        if (!HasSetName)
+
+                        if (!hasName)
                         {
-                            var appendId = _alwaysAppend;
-                            var name = n.type.ToString();
-                            var willAppendID = usedName.Count(x => x == name);
-                            if (usedName.Contains(name))
-                            {
-                                appendId = true;
-                            }
-                            usedName.Add(name);
-                            if (_alwaysAppend) willAppendID = n.id;
-                            n.SetName(appendId ? $"{name}_{willAppendID}" : name);
+                            string autoName = GenerateUniqueName(t.ToString(), id, out _);
+                            if(istemplateRoot == true) autoName = rootVarname;
+                            n.SetName(autoName);
                         }
-                        if(t == NodeType.UXML)
+                        if (t == NodeType.UXML)
                         {
-                            var appendId = _alwaysAppend;
-                            var name = "canvas";
-                            var willAppendID = usedName.Count(x => x == name);
-                            if (usedName.Contains(name))
-                            {
-                                appendId = true;
-                            }
-                            usedName.Add(name);
-                            if (_alwaysAppend) willAppendID = n.id;
-                            n.SetName(appendId ? $"{name}_{willAppendID}" : name);
+                            string canvasName = GenerateUniqueName("canvas", id, out _);
+                            n.SetName(canvasName);
                         }
-                        var p = "";
-                        if (_WritePath)
+                        if (_context.WritePath)
                         {
-                            List<Node> Paths = new List<Node>();
-                            var cN = n;
-                            Paths.Add(cN);
-                            while (cN.parent != null)
+                            List<Node> pathNodes = new List<Node>();
+                            Node cur = n;
+                            while (cur != null)
                             {
-                                Paths.Add(cN.parent);
-                                cN = cN.parent;
+                                pathNodes.Add(cur);
+                                cur = cur.parent;
                             }
-                            Paths.Reverse();
-                            string path = "";
-                            foreach (var item in Paths)
+                            pathNodes.Reverse();
+                            string pathStr = "";
+                            foreach (var pn in pathNodes)
                             {
-                                path += $"{item.GetName(sb)}({item.type} - {item.id}) ->";
+                                pathStr += $"{pn.GetName(_context.Log)}({pn.type} - id:{pn.id}, {(pn.parent == null ? "Root" : $"{pn.indexInParent}th child of {pn.parent.GetName(_context.Log)}")}) -> ";
                             }
-                            p = path.Remove(path.Length - 2, 2);
+                            if (pathStr.Length > 3)
+                                pathStr = pathStr.Remove(pathStr.Length - 3);
+                            n.message = pathStr;
                         }
-                        if (!string.IsNullOrEmpty(nodeMsg))
-                        {
-                            nodeMsg += "\n";
-                        }
-                        n.message = nodeMsg + p;
+
                         Nodes.Add(n);
-                        if (node.HasChildNodes)
+
+                        if (element.HasChildNodes)
                         {
-                            sb.AppendLine($"");
-                            PrintNodes(n, element.ChildNodes, sb);
+                            Log("");
+                            PrintNodes(n, element.ChildNodes,"");
                         }
                     }
                 }
             }
         }
+        string GenerateUniqueName(string baseName, int id, out bool appended)
+        {
+            appended = false;
+            if (string.IsNullOrEmpty(baseName))
+                baseName = "element";
+
+            string candidate = baseName;
+            if (_context.AlwaysAppendId)
+            {
+                candidate = $"{baseName}_{id}";
+                appended = true;
+                int suffix = id;
+                while (_context.UsedNames.Contains(candidate))
+                {
+                    suffix++;
+                    candidate = $"{baseName}_{suffix}";
+                }
+            }
+            else
+            {
+                candidate = baseName;
+                if (_context.UsedNames.Contains(candidate))
+                {
+                    appended = true;
+                    candidate = $"{baseName}_{id}";
+                    int suffix = id;
+                    while (_context.UsedNames.Contains(candidate))
+                    {
+                        suffix++;
+                        candidate = $"{baseName}_{suffix}";
+                    }
+                }
+            }
+
+            _context.UsedNames.Add(candidate);
+            return candidate;
+        }
     }
 
-    enum NodeType
+    public enum NodeType
     {
         VisualElement,
         Label,
         Message,
-        UXML // to canvas
+        UXML, // to canvas
+        Template,
+        Instance
     }
 
-    class Node
+    public static string ConvertProjectUrlToAbsolutePath(string url)
     {
+        if (string.IsNullOrEmpty(url) || !url.StartsWith("project://database/"))
+        {
+            Debug.LogError("invaild url!");
+            return null;
+        }
+
+        string repath = url.Substring("project://database/".Length);
+        int markindex = repath.IndexOf('?');
+        if (markindex != -1)
+        {
+            repath = repath.Substring(0, markindex);
+        }
+        string assetpath = Uri.UnescapeDataString(repath);
+        string root = Path.GetDirectoryName(Application.dataPath);
+        if (root != null)
+        {
+            string abpath = Path.Combine(root, assetpath);
+            return Path.GetFullPath(abpath);
+        }
+
+        return null;
+    }
+
+    public class Node
+    {
+        public static Dictionary<string, string> templateToPath = new Dictionary<string, string>();
         public NodeType type;
         public int id;
         public string message;
+        public string template;
+        public Dictionary<string, BaseStyle> styles;
+        public string text;
+        public Node parent;
+        public int indexInParent = 0;
+        public string _name;
+        public int GetDepth()
+        {
+            int depth = 0;
+            Node current = this;
+            while (current.parent != null)
+            {
+                depth++;
+                current = current.parent;
+            }
+            return depth;
+        }
+        private string Indent(int level)
+        {
+            if (level <= 0) return string.Empty;
+            return new string('\t', level);
+        }
         public string GetName(StringBuilder log = null)
         {
             if (string.IsNullOrEmpty(_name))
@@ -331,48 +519,84 @@ public class UxmlToCodeWindow : EditorWindow
             return _name;
         }
 
-        public void SetName(string value)
+        public void SetName(string value) => _name = value;
+        public int ToCode(StringBuilder sb, ParseContext context, int indentLevel = -1)
         {
-            _name = value;
-        }
+            if (indentLevel < 0)
+                indentLevel = GetDepth();
 
-        string _name;
-        public Dictionary<string, BaseStyle> styles;
-        // Only be filled when the type is Label
-        public string text;
-        public Node parent;
-        public void ToCode(StringBuilder sb)
-        {
-            var varName = GetName();
+            int errors = 0;
+            var varName = GetName(context?.Log);
+            string prefix = Indent(indentLevel);
+
             if (!string.IsNullOrEmpty(message))
             {
-                sb.AppendLine("/*");
-                sb.AppendLine(message);
-                sb.AppendLine("*/");
+                sb.AppendLine(prefix + "/*");
+                sb.AppendLine(prefix + message);
+                sb.AppendLine(prefix + "*/");
             }
-            if (type == NodeType.Message){ sb.AppendLine(); return; }
+
+            if (type == NodeType.Message)
+            {
+                sb.AppendLine();
+                return 0;
+            }
+
             switch (type)
             {
                 case NodeType.VisualElement:
-                    sb.AppendLine($"DisplayElement {varName} = {parent.GetName()}.AddElement();");
+                    sb.AppendLine(prefix + $"// start define of {varName}");
+                    sb.AppendLine(prefix + $"DisplayElement {varName} = {parent.GetName()}.AddElement();");
                     break;
                 case NodeType.Label:
-                    sb.AppendLine($"DisplayText {varName} = {parent.GetName()}.AddText(\"{text}\");");
+                    sb.AppendLine(prefix + $"// start define of {varName}");
+                    sb.AppendLine(prefix + $"DisplayText {varName} = {parent.GetName()}.AddText(\"{text}\");");
                     break;
                 case NodeType.UXML:
-                    sb.AppendLine($"DisplayCanvas {varName} = DisplayCanvas.Create();");
+                    sb.AppendLine(prefix + $"// start define of {varName}");
+                    sb.AppendLine(prefix + $"DisplayCanvas {varName} = DisplayCanvas.Create();");
                     break;
+                case NodeType.Instance:
+                    sb.AppendLine(prefix + $"// template start of {varName}");
+                    sb.AppendLine(prefix + "{");
+                    context?.Log?.AppendLine("Template Proceed start, try to get path...");
+                    if (templateToPath.TryGetValue(template, out var path))
+                    {
+                        StartProcess(path, sb, context, true, this.parent, varName, baseIndent: indentLevel + 1);
+                    }
+                    else
+                    {
+                        context?.Log?.AppendLine($"Error: Failed to get path for template '{template}', ignoring this Instance!");
+                        errors++;
+                    }
+                    sb.AppendLine();
+                    sb.AppendLine(prefix + $"// Apply styles for {varName}");
+                    if (styles != null)
+                    {
+                        foreach (var style in styles.Values)
+                        {
+                            if (style.IsKeyword) continue;
+                            sb.Append(prefix);
+                            style.ToCode(varName, sb);
+                        }
+                    }
+                    sb.AppendLine(prefix + "}");
+                    sb.AppendLine();
+                    return errors;
                 default:
                     break;
             }
-            if (type != NodeType.UXML && styles != null)
+            if (type != NodeType.UXML && type != NodeType.Instance && type != NodeType.Template && styles != null)
             {
                 foreach (var style in styles.Values)
                 {
+                    if (style.IsKeyword) continue;
+                    sb.Append(prefix);
                     style.ToCode(varName, sb);
                 }
             }
-            sb.AppendLine();
+                    sb.AppendLine();
+            return errors;
         }
     }
 }
