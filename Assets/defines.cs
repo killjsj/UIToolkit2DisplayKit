@@ -1,6 +1,3 @@
-// AIGC,Model:Deepseek-v4-pro
-
-
 // ============================================================================
 // DisplayKit Style Properties - Auto-generated from StyleProperties.md
 // No UnityEngine.UIElements references allowed.
@@ -89,16 +86,20 @@ namespace DisplayKit
         public override string ToString() => $"{angle}deg";
     }
 
-    /// <summary>Represents a translation offset.</summary>
+    /// <summary>Represents a translation offset (pixel Vector2 or Length-based).</summary>
     public struct Translate
     {
         public Vector2 value;
+        public bool useLengths;
+        public Length xLength;
+        public Length yLength;
 
-        public Translate(Vector2 value) { this.value = value; }
+        public Translate(Vector2 value) { this.value = value; useLengths = false; xLength = yLength = default; }
+        public Translate(Length x, Length y) { xLength = x; yLength = y; useLengths = true; value = default; }
 
         public static implicit operator Translate(Vector2 value) => new Translate(value);
 
-        public override string ToString() => value.ToString();
+        public override string ToString() => useLengths ? $"({xLength}, {yLength})" : value.ToString();
     }
 
     /// <summary>Represents a transform origin point.</summary>
@@ -184,6 +185,34 @@ namespace DisplayKit
         /// <summary>Parse <see cref="RawValue"/> into concrete value or keyword.</summary>
         protected abstract void Parse();
 
+        /// <summary>
+        /// Parse space-separated float values from a CSS string.
+        /// Handles "px", "%", "deg" suffixes by stripping them.
+        /// Returns null if not enough values could be parsed.
+        /// </summary>
+        protected static float[] ParseFloats(string raw, int minCount)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return null;
+            var parts = raw.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+            var result = new float[parts.Length];
+            for (int i = 0; i < parts.Length; i++)
+            {
+                string p = parts[i].Trim();
+                p = StripSuffix(p, "px");
+                p = StripSuffix(p, "%");
+                p = StripSuffix(p, "deg");
+                if (!float.TryParse(p, NumberStyles.Float, CultureInfo.InvariantCulture, out result[i]))
+                    return result.Length >= minCount ? result : null;
+            }
+            return result.Length >= minCount ? result : null;
+        }
+
+        public static string StripSuffix(string s, string suffix)
+        {
+            return s.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)
+                ? s.Substring(0, s.Length - suffix.Length) : s;
+        }
+
         // ---- CSS → DisplayKit path mapping ----
 
         private static readonly Dictionary<string, string> PathMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -250,6 +279,10 @@ namespace DisplayKit
             ["paragraph-spacing"] = ".Text.ParagraphSpacing",
             ["outline-width"] = ".Text.OutlineWidth",
             ["outline-color"] = ".Text.OutlineColor",
+            ["-unity-text-outline-width"] = ".Text.OutlineWidth",
+            ["-unity-text-outline-color"] = ".Text.OutlineColor",
+            ["-unity-paragraph-spacing"] = ".Text.ParagraphSpacing",
+            ["-unity-font-definition"] = ".Text.Font",
             ["text-shadow"] = ".Text.TextShadow",
         };
 
@@ -328,7 +361,8 @@ namespace DisplayKit
                 Keyword = kw;
                 return;
             }
-            if (float.TryParse(RawValue, NumberStyles.Float, CultureInfo.InvariantCulture, out float val))
+            string num = StripSuffix(RawValue.Trim(), "px");
+            if (float.TryParse(num, NumberStyles.Float, CultureInfo.InvariantCulture, out float val))
             {
                 Value = val;
                 Keyword = StyleKeyword.Undefined;
@@ -603,6 +637,41 @@ namespace DisplayKit
         protected override void Parse()
         {
             if (TryParseKeyword(RawValue, out var kw)) { Keyword = kw; return; }
+            // CSS: "10px 20px", "62% -47%", "10 20"
+            var parts = RawValue.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 2) return;
+
+            // Detect if any part uses %, which means Length-based Translate
+            bool hasPercent = false;
+            for (int i = 0; i < parts.Length && i < 2; i++)
+                if (parts[i].Trim().EndsWith("%")) hasPercent = true;
+
+            if (hasPercent)
+            {
+                Length x = ParseLength(parts[0]);
+                Length y = ParseLength(parts[1]);
+                Value = new Translate(x, y);
+            }
+            else
+            {
+                var nums = ParseFloats(RawValue, 2);
+                if (nums != null)
+                    Value = new Vector2(nums[0], nums[1]);
+            }
+            Keyword = StyleKeyword.Undefined;
+        }
+
+        private static Length ParseLength(string s)
+        {
+            s = s.Trim();
+            if (s.EndsWith("%"))
+            {
+                float.TryParse(s.TrimEnd('%'), NumberStyles.Float, CultureInfo.InvariantCulture, out float v);
+                return new Length(v, LengthUnit.Percent);
+            }
+            string num = StripSuffix(s, "px");
+            float.TryParse(num, NumberStyles.Float, CultureInfo.InvariantCulture, out float pv);
+            return new Length(pv, LengthUnit.Pixel);
         }
 
         public static implicit operator StyleTranslate(Translate value) => new StyleTranslate(value);
@@ -612,8 +681,20 @@ namespace DisplayKit
         public override void ToCode(string targetVarName, StringBuilder sb)
         {
             if (IsKeyword) return;
-            sb.AppendLine($"{FullPath(targetVarName)} = new Vector2({Value.value.x}f, {Value.value.y}f);");
+            if (Value.useLengths)
+            {
+                sb.AppendLine($"{FullPath(targetVarName)} = new Translate({LengthCode(Value.xLength)}, {LengthCode(Value.yLength)});");
+            }
+            else
+            {
+                sb.AppendLine($"{FullPath(targetVarName)} = new Translate(new Vector2({Value.value.x.ToString(CultureInfo.InvariantCulture)}f, {Value.value.y.ToString(CultureInfo.InvariantCulture)}f));");
+            }
         }
+
+        private static string LengthCode(Length l) =>
+            l.unit == LengthUnit.Percent
+                ? $"Length.Percent({l.value.ToString(CultureInfo.InvariantCulture)}f)"
+                : $"new Length({l.value.ToString(CultureInfo.InvariantCulture)}f, LengthUnit.Pixel)";
     }
 
     /// <summary>Wrapper for Scale style values.</summary>
@@ -629,6 +710,16 @@ namespace DisplayKit
         protected override void Parse()
         {
             if (TryParseKeyword(RawValue, out var kw)) { Keyword = kw; return; }
+            // CSS: "1.5" (uniform) or "1.5 1.5 1" (per-axis)
+            var nums = ParseFloats(RawValue, 1);
+            if (nums != null)
+            {
+                float x = nums[0];
+                float y = nums.Length > 1 ? nums[1] : x;
+                float z = nums.Length > 2 ? nums[2] : 1f;
+                Value = new Vector3(x, y, z);
+                Keyword = StyleKeyword.Undefined;
+            }
         }
 
         public static implicit operator StyleScale(Scale value) => new StyleScale(value);
@@ -638,7 +729,7 @@ namespace DisplayKit
         public override void ToCode(string targetVarName, StringBuilder sb)
         {
             if (IsKeyword) return;
-            sb.AppendLine($"{FullPath(targetVarName)} = new Vector3({Value.value.x}f, {Value.value.y}f, {Value.value.z}f);");
+            sb.AppendLine($"{FullPath(targetVarName)} = new Scale(new Vector3({Value.value.x.ToString(CultureInfo.InvariantCulture)}f, {Value.value.y.ToString(CultureInfo.InvariantCulture)}f, {Value.value.z.ToString(CultureInfo.InvariantCulture)}f));");
         }
     }
 
@@ -655,6 +746,60 @@ namespace DisplayKit
         protected override void Parse()
         {
             if (TryParseKeyword(RawValue, out var kw)) { Keyword = kw; return; }
+            // CSS: "45deg", "0.5turn", "3.14rad", "100grad", or 3D: "x y z angle"
+            var parts = RawValue.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0) return;
+
+            // Take the last part as the angle value (handles both "45deg" and "12 0 1 -15.55556grad")
+            string angleStr = parts[parts.Length - 1].Trim();
+            if (TryParseAngle(angleStr, out float angle))
+            {
+                Value = angle;
+                Keyword = StyleKeyword.Undefined;
+            }
+        }
+
+        private static bool TryParseAngle(string s, out float degrees)
+        {
+            degrees = 0f;
+            if (string.IsNullOrEmpty(s)) return false;
+
+            string lower = s.ToLowerInvariant();
+            float factor;
+            string numStr;
+
+            if (lower.EndsWith("grad"))
+            {
+                factor = 0.9f;           // 1 grad = 0.9 deg
+                numStr = lower.Substring(0, lower.Length - 4);
+            }
+            else if (lower.EndsWith("turn"))
+            {
+                factor = 360f;           // 1 turn = 360 deg
+                numStr = lower.Substring(0, lower.Length - 4);
+            }
+            else if (lower.EndsWith("rad"))
+            {
+                factor = 180f / Mathf.PI; // 1 rad = 180/π deg
+                numStr = lower.Substring(0, lower.Length - 3);
+            }
+            else if (lower.EndsWith("deg"))
+            {
+                factor = 1f;
+                numStr = lower.Substring(0, lower.Length - 3);
+            }
+            else
+            {
+                factor = 1f;
+                numStr = lower;
+            }
+
+            if (float.TryParse(numStr.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out float val))
+            {
+                degrees = val * factor;
+                return true;
+            }
+            return false;
         }
 
         public static implicit operator StyleRotate(Rotate value) => new StyleRotate(value);
@@ -664,7 +809,7 @@ namespace DisplayKit
         public override void ToCode(string targetVarName, StringBuilder sb)
         {
             if (IsKeyword) return;
-            sb.AppendLine($"{FullPath(targetVarName)} = {Value.angle}f;");
+            sb.AppendLine($"{FullPath(targetVarName)} = new Rotate({Value.angle.ToString(CultureInfo.InvariantCulture)}f);");
         }
     }
 
@@ -681,6 +826,50 @@ namespace DisplayKit
         protected override void Parse()
         {
             if (TryParseKeyword(RawValue, out var kw)) { Keyword = kw; return; }
+            // CSS: "50 0 0", "50% 0%", "top", "top left", "center bottom", etc.
+            var parts = RawValue.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+
+            float x = ParseOriginPart(parts, 0, 50f);
+            float y = ParseOriginPart(parts, 1, 50f);
+            float z = 0f;
+
+            // Single keyword: infer the other axis
+            if (parts.Length == 1 && TryOriginKeyword(parts[0].Trim(), out float kv, out bool isVertical))
+            {
+                if (isVertical) { x = 50f; y = kv; }
+                else { x = kv; y = 50f; } // "center" goes here too: x=50,y=50
+            }
+
+            if (parts.Length >= 3)
+            {
+                string nz = StripSuffix(StripSuffix(parts[2].Trim(), "%"), "px");
+                float.TryParse(nz, NumberStyles.Float, CultureInfo.InvariantCulture, out z);
+            }
+
+            Value = new TransformOrigin(x, y, z);
+            Keyword = StyleKeyword.Undefined;
+        }
+
+        private static float ParseOriginPart(string[] parts, int index, float fallback)
+        {
+            if (index >= parts.Length) return fallback;
+            string s = parts[index].Trim();
+            if (TryOriginKeyword(s, out float kv, out _)) return kv;
+            string num = StripSuffix(StripSuffix(s, "%"), "px");
+            return float.TryParse(num, NumberStyles.Float, CultureInfo.InvariantCulture, out float fv) ? fv : fallback;
+        }
+
+        private static bool TryOriginKeyword(string s, out float value, out bool isVertical)
+        {
+            switch (s.Trim().ToLowerInvariant())
+            {
+                case "top": value = 0f; isVertical = true; return true;
+                case "bottom": value = 100f; isVertical = true; return true;
+                case "left": value = 0f; isVertical = false; return true;
+                case "right": value = 100f; isVertical = false; return true;
+                case "center": value = 50f; isVertical = false; return true;
+                default: value = 0f; isVertical = false; return false;
+            }
         }
 
         public static implicit operator StyleTransformOrigin(TransformOrigin value) => new StyleTransformOrigin(value);
@@ -764,6 +953,72 @@ namespace DisplayKit
             sb.AppendLine($"    offset = new Vector2({Value.offset.x}f, {Value.offset.y}f),");
             sb.AppendLine($"    blurRadius = {Value.blurRadius}f");
             sb.AppendLine("};");
+        }
+    }
+}
+
+// ============================================================================
+// StyleFont - Font definition parser (for -unity-font-definition)
+// ============================================================================
+
+namespace DisplayKit
+{
+    /// <summary>
+    /// Parses UXML font definition URLs into FontType.
+    /// Input: url("project://.../RobotoItalic.ttf?...#RobotoItalic")
+    /// </summary>
+    public class StyleFont : BaseStyle
+    {
+        public FontType Value { get; set; }
+
+        public StyleFont() : base() { }
+        public StyleFont(FontType value) : base() { Value = value; RawValue = value.ToString(); }
+        public StyleFont(string rawValue) : base(rawValue) { }
+        public StyleFont(StyleKeyword keyword) : base(keyword) { }
+
+        protected override void Parse()
+        {
+            if (TryParseKeyword(RawValue, out var kw)) { Keyword = kw; return; }
+
+            // Extract font name from url(".../FontName.ttf?...#FontName")
+            // Try the fragment after '#' first, then fall back to filename
+            string raw = RawValue.Trim();
+            string fontName = null;
+
+            // Try fragment after #
+            int hash = raw.LastIndexOf('#');
+            if (hash >= 0)
+            {
+                int end = raw.IndexOf(')', hash);
+                fontName = end > hash ? raw.Substring(hash + 1, end - hash - 1).Trim() : raw.Substring(hash + 1).Trim();
+            }
+            else
+            {
+                // Try extract filename before ?
+                int lastSlash = raw.LastIndexOf('/');
+                int q = raw.IndexOf('?', lastSlash > 0 ? lastSlash : 0);
+                if (lastSlash >= 0)
+                    fontName = (q > lastSlash ? raw.Substring(lastSlash + 1, q - lastSlash - 1) : raw.Substring(lastSlash + 1)).Trim();
+            }
+
+            if (!string.IsNullOrEmpty(fontName))
+            {
+                fontName = StripSuffix(StripSuffix(fontName, ".ttf"), ".otf").Trim('"', '\'', ' ', ')');
+                if (Enum.TryParse(fontName, true, out FontType ft))
+                {
+                    Value = ft;
+                    Keyword = StyleKeyword.Undefined;
+                    return;
+                }
+            }
+        }
+
+        public static implicit operator StyleFont(string rawValue) => new StyleFont(rawValue);
+
+        public override void ToCode(string targetVarName, StringBuilder sb)
+        {
+            if (IsKeyword) return;
+            sb.AppendLine($"{FullPath(targetVarName)} = FontType.{Value};");
         }
     }
 }
@@ -1241,6 +1496,10 @@ namespace DisplayKit
                 ["paragraph-spacing"] = v => (StyleLength)v,
                 ["outline-width"] = v => (StyleFloat)v,
                 ["outline-color"] = v => (StyleColor)v,
+                ["-unity-text-outline-width"] = v => (StyleFloat)v,
+                ["-unity-text-outline-color"] = v => (StyleColor)v,
+                ["-unity-paragraph-spacing"] = v => (StyleLength)v,
+                ["-unity-font-definition"] = v => (StyleFont)v,
                 ["text-shadow"] = v => (StyleTextShadow)v,
             };
 
@@ -1388,6 +1647,10 @@ namespace DisplayKit
             if (Try(s, "paragraph-spacing", out StyleLength ps)) t.ParagraphSpacing = ps;
             if (Try(s, "outline-width", out StyleFloat ow)) t.OutlineWidth = ow;
             if (Try(s, "outline-color", out StyleColor oc)) t.OutlineColor = oc;
+            if (Try(s, "-unity-text-outline-width", out StyleFloat uow)) t.OutlineWidth = uow;
+            if (Try(s, "-unity-text-outline-color", out StyleColor uoc)) t.OutlineColor = uoc;
+            if (Try(s, "-unity-paragraph-spacing", out StyleLength ups)) t.ParagraphSpacing = ups;
+            if (Try(s, "-unity-font-definition", out StyleFont sf)) t.Font = sf.Value;
             if (Try(s, "text-shadow", out StyleTextShadow ts)) t.TextShadow = ts;
         }
 
