@@ -57,6 +57,7 @@
     <Compile Include="Assets\defines.cs" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="Assets\example_error.uxml" />
     <None Include="Assets\example.uxml" />
   </ItemGroup>
   <ItemGroup>

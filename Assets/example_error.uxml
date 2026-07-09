@@ -9,8 +9,14 @@
             <ui:VisualElement name="Block" style="background-color: rgb(255, 255, 255); top: 20%; bottom: auto; height: 30%; width: 35%; flex-grow: 0.1; border-top-left-radius: 41px; border-top-right-radius: 41px; border-bottom-right-radius: 41px; border-bottom-left-radius: 41px; border-top-width: 10px; border-right-width: 10px; border-bottom-width: 10px; border-left-width: 10px; border-left-color: rgb(255, 0, 0); border-right-color: rgb(141, 252, 131); border-top-color: rgb(0, 255, 233); border-bottom-color: rgb(150, 70, 170);"/>
         </ui:VisualElement>
     </ui:VisualElement>
+    <ui:Image/>
     <ui:VisualElement name="Main2" style="flex-grow: 1;">
         <ui:Label text="123"/>
-        <ui:Label text="Label"/>
+        <ui:Label text="Label">
+            <ui:VisualElement style="flex-grow: 1;">
+                <ui:VisualElement style="flex-grow: 1;"/>
+            </ui:VisualElement>
+            <ui:VisualElement style="flex-grow: 1;"/>
+        </ui:Label>
     </ui:VisualElement>
 </ui:UXML>

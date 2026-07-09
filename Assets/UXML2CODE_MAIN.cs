@@ -14,6 +14,7 @@ public class UxmlToCodeWindow : EditorWindow
     VisualTreeAsset asset;
     int RootCanvasID = 0;
     bool AlwaysAppendIdOnName = false;
+    bool WritePath = true;
 
     Vector2 _scroll;
     Vector2 _log_scroll;
@@ -35,6 +36,7 @@ public class UxmlToCodeWindow : EditorWindow
         asset = (VisualTreeAsset)EditorGUILayout.ObjectField("VisualTreeAsset", asset, typeof(VisualTreeAsset), false);
         RootCanvasID = EditorGUILayout.IntField("RootCanvasID", RootCanvasID);
         AlwaysAppendIdOnName = EditorGUILayout.Toggle("Always Append Id On Name", AlwaysAppendIdOnName);
+        WritePath = EditorGUILayout.Toggle("Write Path In Message Area", WritePath);
 
         EditorGUILayout.Space();
         if (GUILayout.Button("Process"))
@@ -104,7 +106,7 @@ public class UxmlToCodeWindow : EditorWindow
         }
 
         var sb = new StringBuilder();
-        var parser = new UxmlParser(RootCanvasID, AlwaysAppendIdOnName, sb);
+        var parser = new UxmlParser(RootCanvasID, AlwaysAppendIdOnName, sb,WritePath);
         parser.Parse(reader);
         _log = sb.ToString();
         var codeSb = new StringBuilder();
@@ -139,16 +141,19 @@ public class UxmlToCodeWindow : EditorWindow
         List<string> usedName = new();
         public List<Node> Nodes { get; } = new List<Node>();
 
-        public UxmlParser(int rootCanvasID, bool alwaysAppend, StringBuilder logSb)
+        public UxmlParser(int rootCanvasID, bool alwaysAppend, StringBuilder logSb,bool writePath)
         {
             _rootCanvasID = rootCanvasID;
             _alwaysAppend = alwaysAppend;
             _logSb = logSb ?? new StringBuilder();
             _cid = _rootCanvasID - 1;
+            _WritePath = writePath;
         }
 
         public int NextID { get { _cid++; return _cid; } }
         public int errorCount = 0;
+        private bool _WritePath;
+
         public void Parse(XmlDocument reader)
         {
             _logSb.Clear();
@@ -158,7 +163,7 @@ public class UxmlToCodeWindow : EditorWindow
 
         void PrintNodes(Node parent, XmlNodeList nodes, StringBuilder sb)
         {
-            var msg = string.Empty;
+            var ParentMsg = string.Empty;
             sb.AppendLine($"--- Starting Proccess node, parent.id:{parent?.id} ---");
             if (parent != null)
             {
@@ -168,10 +173,15 @@ public class UxmlToCodeWindow : EditorWindow
                 }
                 else
                 {
-                    msg = $"    Error!Label(name:{parent.GetName(sb)},id:{parent.id}) is parent! Using id {_rootCanvasID}(root canvas) be parent\n";
+                    ParentMsg = $"    Error!Label(name:{parent.GetName(sb)},id:{parent.id}) is parent! Using id {_rootCanvasID}(root canvas) be parent\n";
                     errorCount++;
-                    sb.Append(msg);
+                    sb.Append(ParentMsg);
                     parent = Nodes.Find(x => x.id == _rootCanvasID);
+                    var mn = new Node() { 
+                        type = NodeType.Message,
+                        message = ParentMsg,
+                    };
+                    Nodes.Add(mn);
                     if (parent == null) Debug.LogAssertion($"PrevMessage:{sb.ToString()}\nERROR:Failed to find root(id:{_rootCanvasID})!");
                 }
             }
@@ -182,6 +192,7 @@ public class UxmlToCodeWindow : EditorWindow
 
             foreach (XmlNode node in nodes)
             {
+                var nodeMsg = string.Empty;
                 if (node is XmlElement element)
                 {
                     sb.AppendLine($"    Node Name: {node.Name} Type: {node.NodeType} Value: {node.Value} {node.InnerText}");
@@ -200,7 +211,7 @@ public class UxmlToCodeWindow : EditorWindow
                         }catch(ArgumentException e)
                         {
                             errorCount++;
-                            msg += "Error! "+e.Message + $" --- \"{TryToSplitUIType[1]}\" failed to convent! Only Supported with Label and VisualElement! Replcae it to VisualElement!";
+                            nodeMsg += "Error! "+e.Message + $" --- \"{TryToSplitUIType[1]}\" failed to convent! Only Supported with Label and VisualElement! Replcae it to VisualElement!";
                             sb.AppendLine("Error! " + e.Message + $" --- \"{TryToSplitUIType[1]}\" has not supported! Only Supported with Label and VisualElement!");
                         }
                         n.type = t;
@@ -260,7 +271,30 @@ public class UxmlToCodeWindow : EditorWindow
                             if (_alwaysAppend) willAppendID = n.id;
                             n.SetName(appendId ? $"{name}_{willAppendID}" : name);
                         }
-                        n.message = msg;
+                        var p = "";
+                        if (_WritePath)
+                        {
+                            List<Node> Paths = new List<Node>();
+                            var cN = n;
+                            Paths.Add(cN);
+                            while (cN.parent != null)
+                            {
+                                Paths.Add(cN.parent);
+                                cN = cN.parent;
+                            }
+                            Paths.Reverse();
+                            string path = "";
+                            foreach (var item in Paths)
+                            {
+                                path += $"{item.GetName(sb)}({item.type} - {item.id}) ->";
+                            }
+                            p = path.Remove(path.Length - 2, 2);
+                        }
+                        if (!string.IsNullOrEmpty(nodeMsg))
+                        {
+                            nodeMsg += "\n";
+                        }
+                        n.message = nodeMsg + p;
                         Nodes.Add(n);
                         if (node.HasChildNodes)
                         {
@@ -277,6 +311,7 @@ public class UxmlToCodeWindow : EditorWindow
     {
         VisualElement,
         Label,
+        Message,
         UXML // to canvas
     }
 
@@ -315,6 +350,7 @@ public class UxmlToCodeWindow : EditorWindow
                 sb.AppendLine(message);
                 sb.AppendLine("*/");
             }
+            if (type == NodeType.Message){ sb.AppendLine(); return; }
             switch (type)
             {
                 case NodeType.VisualElement:
