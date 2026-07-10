@@ -780,13 +780,35 @@ namespace DisplayKit
         {
             string enumType = GetEnumType(prop);
             if (enumType == null || CssParse.TryParseKeyword(raw, out _)) return null;
-            // CSS kebab-case → PascalCase enum member: "flex-start" → "FlexStart"
-            var norm = raw.Trim().Replace("-", "");
-            if (string.IsNullOrEmpty(norm)) return null;
-            // Capitalise first letter
-            var member = char.ToUpperInvariant(norm[0]) + norm.Substring(1);
+            var member = GetEnumMember(prop, raw);
+            if (member == null) return null;
             return $"{path} = {enumType}.{member};";
         }
+
+        /// <summary>Parse CSS enum value and return the actual C# enum member name.</summary>
+        private static string GetEnumMember(string prop, string raw)
+        {
+            var norm = raw.Trim().Replace("-", "");
+            if (string.IsNullOrEmpty(norm)) return null;
+            switch (prop)
+            {
+                case "flex-direction": return TryEnum<FlexDirection>(norm);
+                case "flex-wrap": return TryEnum<Wrap>(norm);
+                case "align-items": case "align-self": case "align-content": return TryEnum<Align>(norm);
+                case "justify-content": return TryEnum<Justify>(norm);
+                case "position": return TryEnum<Position>(norm);
+                case "display": return TryEnum<DisplayStyle>(norm);
+                case "visibility": return TryEnum<Visibility>(norm);
+                case "overflow": return TryEnum<Overflow>(norm);
+                case "font-style": return TryEnum<Enums.FontStyle>(norm);
+                case "white-space": return TryEnum<WhiteSpace>(norm);
+                case "text-overflow": return TryEnum<TextOverflow>(norm);
+            }
+            return null;
+        }
+
+        private static string TryEnum<T>(string norm) where T : struct, System.Enum
+            => System.Enum.TryParse<T>(norm, true, out T v) ? v.ToString() : null;
 
         private static string GetEnumType(string prop) => prop switch
         {
@@ -827,7 +849,7 @@ namespace DisplayKit
         {
             var v = CssParse.ParseRotate(raw);
             if (v.keyword != StyleKeyword.Undefined) return null;
-            return $"{path} = new Rotate({v.value.angle.value.ToString(CultureInfo.InvariantCulture)}f);";
+            return $"{path} = new Rotate(new Angle({v.value.angle.value.ToString(CultureInfo.InvariantCulture)}f));";
         }
 
         private static string GenerateTransformOriginCode(string raw, string path)
@@ -849,7 +871,7 @@ namespace DisplayKit
         private static string LengthCode(Length l) =>
             l.unit == LengthUnit.Percent
                 ? $"Length.Percent({l.value.ToString(CultureInfo.InvariantCulture)}f)"
-                : $"{l.value.ToString(CultureInfo.InvariantCulture)}f ";
+                : $"{l.value.ToString(CultureInfo.InvariantCulture)}f";
     }
 }
 

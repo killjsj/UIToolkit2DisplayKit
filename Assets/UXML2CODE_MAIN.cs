@@ -13,11 +13,14 @@ using UnityEngine.UIElements;
 public class UxmlToCodeWindow : EditorWindow
 {
     VisualTreeAsset asset;
-    static int RootCanvasID = 0;
-    static bool AlwaysAppendIdOnName = false;
-    static bool WritePath = true;
+    int RootCanvasID = 0;
+    bool AlwaysAppendIdOnName = false;
+    bool WritePath = true;
+    bool CustomCodeIncludeCanvas = false;
     string before = "";
     string after = "";
+    // Replacements input: each line in the format old=>new
+    string replacements = "";
     Vector2 _scroll;
     Vector2 _log_scroll;
     string _output = string.Empty;
@@ -35,7 +38,8 @@ public class UxmlToCodeWindow : EditorWindow
         public int startID;
         public string BeforeCode;
         public string AfterCode;
-        public ParseContext(int startID, bool alwaysAppendId, bool writePath, StringBuilder log,string beforeCode,string afterCode)
+        public bool CustomCodeIncludeCanvas = true;
+        public ParseContext(int startID, bool alwaysAppendId, bool writePath, StringBuilder log,string beforeCode,string afterCode,bool customCodeIncludeCanvas)
         {
             this.startID = startID;
             CurrentID = startID - 1;
@@ -44,6 +48,7 @@ public class UxmlToCodeWindow : EditorWindow
             Log = log ?? new StringBuilder();
             BeforeCode = beforeCode;
             AfterCode = afterCode;
+            CustomCodeIncludeCanvas = customCodeIncludeCanvas;
         }
 
         public int NextID()
@@ -72,11 +77,17 @@ public class UxmlToCodeWindow : EditorWindow
         AlwaysAppendIdOnName = EditorGUILayout.Toggle("Always Append Id On Name", AlwaysAppendIdOnName);
         WritePath = EditorGUILayout.Toggle("Write Path In Message Area", WritePath);
 
+        CustomCodeIncludeCanvas = EditorGUILayout.Toggle("Allow to append code if target is canvas", CustomCodeIncludeCanvas);
+
         EditorGUILayout.LabelField("Before a element create,Insert:", EditorStyles.boldLabel);
         before = EditorGUILayout.TextArea(before);
         EditorGUILayout.LabelField("After a element create,Insert:", EditorStyles.boldLabel);
         after = EditorGUILayout.TextArea(after);
         EditorGUILayout.LabelField("( \"${name}\" will be replaced by variable name)", EditorStyles.miniLabel);
+
+        EditorGUILayout.LabelField("Replacements (old=>new per line):", EditorStyles.boldLabel);
+        replacements = EditorGUILayout.TextArea(replacements);
+        EditorGUILayout.LabelField("Example: old=>new", EditorStyles.miniLabel);
 
 
         EditorGUILayout.Space();
@@ -122,7 +133,7 @@ public class UxmlToCodeWindow : EditorWindow
         var codesb = new StringBuilder();
         var logsb = new StringBuilder();
         var path = AssetDatabase.GetAssetPath(asset);
-        var context = new ParseContext(RootCanvasID, AlwaysAppendIdOnName, WritePath, logsb,before,after);
+        var context = new ParseContext(RootCanvasID, AlwaysAppendIdOnName, WritePath, logsb,before,after, CustomCodeIncludeCanvas);
         try
         {
             var error = StartProcess(path, codesb, context, template: false, parent: null);
@@ -133,6 +144,22 @@ public class UxmlToCodeWindow : EditorWindow
         }
         catch (Exception ex) {
             Debug.LogError(ex);
+            logsb.AppendLine($"An Error has be catched! Exception ex:{ex}");
+        }
+
+        // apply replacements defined in UI (each line: old=>new)
+        if (!string.IsNullOrEmpty(replacements))
+        {
+            foreach (var line in replacements.Split(new[] {'\r','\n'}, StringSplitOptions.RemoveEmptyEntries))
+            {
+                var idx = line.IndexOf("=>");
+                if (idx <= 0) continue;
+                var key = line.Substring(0, idx).Trim();
+                var val = line.Substring(idx + 2).Trim();
+                if (key.Length == 0) continue;
+                try { codesb.Replace(key, val); }
+                catch (Exception ex) { logsb.AppendLine($"Replacement failed for '{key}'=>'{val}': {ex.Message}"); }
+            }
         }
 
         _log = logsb.ToString();
@@ -186,8 +213,6 @@ public class UxmlToCodeWindow : EditorWindow
         codesb.Replace("new Color(0f, 0f, 0f, 0f)", "Color.clear");
         codesb.Replace("new Color(0f, 1f, 1f, 1f)", "Color.cyan");
         codesb.Replace("new Color(1f, 1f, 1f, 1f)", "Color.white");
-        codesb.Replace("new Color(0.1f, 0.1f, 0.1f, 1f)", "Color.gray1");
-        codesb.Replace("new Color(0.2f, 0.2f, 0.2f, 1f)", "Color.gray2");
 
         return context.ErrorCount;
     }
@@ -525,11 +550,11 @@ public class UxmlToCodeWindow : EditorWindow
             int errors = 0;
             var varName = GetName(context?.Log);
             string prefix = Indent(indentLevel);
-
+            
             if (!string.IsNullOrEmpty(message))
             {
                 sb.AppendLine(prefix + "/*");
-                sb.AppendLine(prefix + message);
+                        sb.AppendLine(prefix + message);
                 sb.AppendLine(prefix + "*/");
             }
 
@@ -541,6 +566,10 @@ public class UxmlToCodeWindow : EditorWindow
 
             var be = context.BeforeCode.Replace("${name}",varName);
             var af = context.AfterCode.Replace("${name}", varName);
+            if(type == NodeType.UXML && context.CustomCodeIncludeCanvas)
+            {
+                be = af = "";
+            }
             if (!string.IsNullOrEmpty(be))
             {
                 sb.AppendLine(prefix + "//User before code");
