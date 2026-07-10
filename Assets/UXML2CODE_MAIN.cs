@@ -16,7 +16,8 @@ public class UxmlToCodeWindow : EditorWindow
     static int RootCanvasID = 0;
     static bool AlwaysAppendIdOnName = false;
     static bool WritePath = true;
-
+    string before = "";
+    string after = "";
     Vector2 _scroll;
     Vector2 _log_scroll;
     string _output = string.Empty;
@@ -32,13 +33,17 @@ public class UxmlToCodeWindow : EditorWindow
         public bool WritePath;
         public StringBuilder Log;
         public int startID;
-        public ParseContext(int startID, bool alwaysAppendId, bool writePath, StringBuilder log)
+        public string BeforeCode;
+        public string AfterCode;
+        public ParseContext(int startID, bool alwaysAppendId, bool writePath, StringBuilder log,string beforeCode,string afterCode)
         {
             this.startID = startID;
             CurrentID = startID - 1;
             AlwaysAppendId = alwaysAppendId;
             WritePath = writePath;
             Log = log ?? new StringBuilder();
+            BeforeCode = beforeCode;
+            AfterCode = afterCode;
         }
 
         public int NextID()
@@ -66,6 +71,13 @@ public class UxmlToCodeWindow : EditorWindow
         RootCanvasID = EditorGUILayout.IntField("RootCanvasID", RootCanvasID);
         AlwaysAppendIdOnName = EditorGUILayout.Toggle("Always Append Id On Name", AlwaysAppendIdOnName);
         WritePath = EditorGUILayout.Toggle("Write Path In Message Area", WritePath);
+
+        EditorGUILayout.LabelField("Before a element create,Insert:", EditorStyles.boldLabel);
+        before = EditorGUILayout.TextArea(before);
+        EditorGUILayout.LabelField("After a element create,Insert:", EditorStyles.boldLabel);
+        after = EditorGUILayout.TextArea(after);
+        EditorGUILayout.LabelField("( \"${name}\" will be replaced by variable name)", EditorStyles.miniLabel);
+
 
         EditorGUILayout.Space();
         if (GUILayout.Button("Process"))
@@ -110,7 +122,7 @@ public class UxmlToCodeWindow : EditorWindow
         var codesb = new StringBuilder();
         var logsb = new StringBuilder();
         var path = AssetDatabase.GetAssetPath(asset);
-        var context = new ParseContext(RootCanvasID, AlwaysAppendIdOnName, WritePath, logsb);
+        var context = new ParseContext(RootCanvasID, AlwaysAppendIdOnName, WritePath, logsb,before,after);
         try
         {
             var error = StartProcess(path, codesb, context, template: false, parent: null);
@@ -527,6 +539,15 @@ public class UxmlToCodeWindow : EditorWindow
                 return 0;
             }
 
+            var be = context.BeforeCode.Replace("${name}",varName);
+            var af = context.AfterCode.Replace("${name}", varName);
+            if (!string.IsNullOrEmpty(be))
+            {
+                sb.AppendLine(prefix + "//User before code");
+                sb.AppendLine(prefix + be);
+                sb.AppendLine(prefix + "//User before code done");
+            }
+
             switch (type)
             {
                 case NodeType.VisualElement:
@@ -586,7 +607,13 @@ public class UxmlToCodeWindow : EditorWindow
                     StyleCodeGen.WriteAssignments(styles, varName, sb,prefix);
                 }
             }
-                    sb.AppendLine();
+            if (!string.IsNullOrEmpty(af))
+            {
+                sb.AppendLine(prefix + "//User after code");
+                sb.AppendLine(prefix+af);
+                sb.AppendLine(prefix + "//User after code end");
+            }
+            sb.AppendLine();
             if (EndOfTemplate != null)
             {
 
