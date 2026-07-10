@@ -376,7 +376,7 @@ public class UxmlToCodeWindow : EditorWindow
                         {
                             Log("");
                             PrintNodes(n, element.ChildNodes,"");
-                            Nodes.Last().EndOfTemplate = n;
+                            if(n.type == NodeType.Instance)Nodes.Last().EndOfTemplate = n;
                         }
                     }
                 }
