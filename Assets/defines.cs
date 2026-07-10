@@ -232,20 +232,25 @@ namespace DisplayKit
         {
             if (TryParseKeyword(raw, out var kw)) return new StyleTransformOrigin(kw);
             var parts = raw.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
-            float x = ParseOriginPart(parts, 0, 50f), y = ParseOriginPart(parts, 1, 50f), z = 0f;
+            Length x = ParseOriginPart(parts, 0, new Length(50f, LengthUnit.Percent));
+            Length y = ParseOriginPart(parts, 1, new Length(50f, LengthUnit.Percent));
+            float z = 0f;
             if (parts.Length == 1 && TryOriginKeyword(parts[0].Trim(), out float kv, out bool isVert))
-            { if (isVert) { x = 50f; y = kv; } else { x = kv; y = 50f; } }
+            { if (isVert) { x = Length.Percent(50f); y = Length.Percent(kv); } else { x = Length.Percent(kv); y = Length.Percent(50f); } }
             if (parts.Length >= 3) { string nz = StripSuffix(StripSuffix(parts[2].Trim(), "%"), "px"); float.TryParse(nz, NumberStyles.Float, CultureInfo.InvariantCulture, out z); }
             return new TransformOrigin(x, y, z);
         }
 
-        private static float ParseOriginPart(string[] parts, int idx, float fb)
+        private static Length ParseOriginPart(string[] parts, int idx, Length fb)
         {
             if (idx >= parts.Length) return fb;
             string s = parts[idx].Trim();
-            if (TryOriginKeyword(s, out float kv, out _)) return kv;
-            string n = StripSuffix(StripSuffix(s, "%"), "px");
-            return float.TryParse(n, NumberStyles.Float, CultureInfo.InvariantCulture, out float fv) ? fv : fb;
+            if (TryOriginKeyword(s, out float kv, out _)) return Length.Percent(kv);
+            if (s.EndsWith("%") && float.TryParse(s.TrimEnd('%'), NumberStyles.Float, CultureInfo.InvariantCulture, out float pct))
+                return new Length(pct, LengthUnit.Percent);
+            string n = StripSuffix(s, "px");
+            return float.TryParse(n, NumberStyles.Float, CultureInfo.InvariantCulture, out float fv)
+                ? new Length(fv, LengthUnit.Pixel) : fb;
         }
 
         private static bool TryOriginKeyword(string s, out float v, out bool isVert)
@@ -830,7 +835,7 @@ namespace DisplayKit
             var v = CssParse.ParseTransformOrigin(raw);
             if (v.keyword != StyleKeyword.Undefined) return null;
             var o = v.value;
-            return $"{path} = new TransformOrigin({o.x}f, {o.y}f, {o.z}f);";
+            return $"{path} = new TransformOrigin({LengthCode(o.x)}, {LengthCode(o.y)}, {o.z.ToString(CultureInfo.InvariantCulture)}f);";
         }
 
         private static string GenerateTextShadowCode(string raw, string path)
@@ -844,7 +849,7 @@ namespace DisplayKit
         private static string LengthCode(Length l) =>
             l.unit == LengthUnit.Percent
                 ? $"Length.Percent({l.value.ToString(CultureInfo.InvariantCulture)}f)"
-                : $"{l.value.ToString(CultureInfo.InvariantCulture)}f";
+                : $"{l.value.ToString(CultureInfo.InvariantCulture)}f ";
     }
 }
 

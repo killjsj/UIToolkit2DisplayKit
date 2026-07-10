@@ -1,8 +1,10 @@
 <ui:UXML xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" noNamespaceSchemaLocation="../UIElementsSchema/UIElements.xsd" editor-extension-mode="False">
+    <ui:Template name="example_error 1" src="project://database/Assets/example_error%201.uxml?fileID=9197481963319205126&amp;guid=83fc5af1e6db0b04a99e34fcef291292&amp;type=3#example_error 1"/>
     <ui:VisualElement name="main_template_child" style="flex-grow: 1; flex-direction: row; align-items: stretch; flex-wrap: nowrap; color: rgb(255, 255, 255); transform-origin: 50px;">
         <ui:VisualElement name="left" style="flex-grow: initial; width: 200px; background-color: rgb(51, 51, 51);">
             <ui:Label text="template" name="LeftLabel" style="font-size: 50px; text-shadow: 12px 12px 1px rgb(255, 0, 0);"/>
             <ui:VisualElement name="Block" style="background-color: rgb(255, 255, 255); top: 20%; bottom: auto; height: 30%; width: 182px; flex-grow: 0.1; border-top-left-radius: 41px; border-top-right-radius: 41px; border-bottom-right-radius: 41px; border-bottom-left-radius: 41px; border-top-width: 10px; border-right-width: 10px; border-bottom-width: 10px; border-left-width: 10px; border-left-color: rgb(255, 0, 0); border-right-color: rgb(141, 252, 131); border-top-color: rgb(0, 255, 233); border-bottom-color: rgb(150, 70, 170); rotate: 0rad;"/>
         </ui:VisualElement>
     </ui:VisualElement>
+    <ui:Instance template="example_error 1"/>
 </ui:UXML>

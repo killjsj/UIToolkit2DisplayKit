@@ -376,7 +376,13 @@ public class UxmlToCodeWindow : EditorWindow
                         {
                             Log("");
                             PrintNodes(n, element.ChildNodes,"");
-                            if(n.type == NodeType.Instance)Nodes.Last().EndOfTemplate = n;
+                            if (n.type == NodeType.Instance) Nodes.Last(x => x.type != NodeType.Message).EndOfTemplate = n;
+
+                        }
+                        else
+                        {
+                            if (n.type == NodeType.Instance) n.EndOfTemplate = n;
+
                         }
                     }
                 }
