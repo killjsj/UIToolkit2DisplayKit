@@ -486,6 +486,7 @@ public class CloneTreeToCodeWindow : EditorWindow
                 {
                     context.Log.AppendLine($"{GetName()}: {styles.Count} styles");
                     StyleCodeGen.WriteAssignments(styles, varName, sb,prefix);
+
                 }
             }
             sb.AppendLine();
