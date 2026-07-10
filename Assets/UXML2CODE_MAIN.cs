@@ -136,7 +136,6 @@ public class UxmlToCodeWindow : EditorWindow
         try
         {
             var error = StartProcess(path, codesb, ref context, template: false, parent: null);
-            Debug.LogError("Error count: " + error);
             if (error > 0)
             {
                 EditorUtility.DisplayDialog("Error", $"Has happend: {error} error(s),Please check log", "OK");
@@ -214,8 +213,6 @@ public class UxmlToCodeWindow : EditorWindow
         codesb.Replace("new Color(0f, 0f, 0f, 0f)", "Color.clear");
         codesb.Replace("new Color(0f, 1f, 1f, 1f)", "Color.cyan");
         codesb.Replace("new Color(1f, 1f, 1f, 1f)", "Color.white");
-        Debug.LogWarning($"context.ErrorCount:{context.ErrorCount}");
-
         return context.ErrorCount;
     }
 
@@ -298,8 +295,6 @@ public class UxmlToCodeWindow : EditorWindow
                         catch (ArgumentException e)
                         {
                             _context.ErrorCount++;
-                            Debug.LogWarning($"_context.ErrorCount:{_context.ErrorCount}");
-
                             Log($"Error! {e.Message} --- \"{parts[1]}\" failed to convert! Replaced with VisualElement!");
                             var mn = new Node()
                             {
@@ -603,9 +598,7 @@ public class UxmlToCodeWindow : EditorWindow
                     context?.Log?.AppendLine("Template Proceed start, try to get path...");
                     if (templateToPath.TryGetValue(template, out var path))
                     {
-                        Debug.LogWarning($"ret:NaN,context.ErrorCount:{context.ErrorCount}");
                         var ret = StartProcess(path, sb,ref context, true, this.parent, varName, baseIndent: indentLevel + 1);
-                        Debug.LogWarning($"ret:{ret},context.ErrorCount:{context.ErrorCount}");
                     }
                     else
                     {
