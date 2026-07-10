@@ -55,6 +55,7 @@
   <ItemGroup>
     <Compile Include="Assets\UXML2CODE_MAIN.cs" />
     <Compile Include="Assets\defines.cs" />
+    <Compile Include="Assets\cloneTree.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Assets\example_error 1.uxml" />

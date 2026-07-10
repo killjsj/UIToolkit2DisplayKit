@@ -1,7 +1,7 @@
 // ============================================================================
-// DisplayKit Style Properties - Auto-generated from StyleProperties.md
-// No UnityEngine.UIElements references allowed.
-// All Style types inherit from BaseStyle.
+// DisplayKit Style Properties - Direct use of UnityEngine.UIElements types.
+// No custom wrapper classes — Unity's Style* structs are used directly.
+// CSS parsing and IStyle conversion are provided as static utilities.
 // ============================================================================
 
 using DisplayKit.Enums;
@@ -11,210 +11,620 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using UnityEngine;
+using Align = UnityEngine.UIElements.Align;
+using DisplayStyle = UnityEngine.UIElements.DisplayStyle;
+// Enum aliases — all enums now come from Unity except FontStyle/FontType/CanvasVisibility
+using FlexDirection = UnityEngine.UIElements.FlexDirection;
 using FontStyle = DisplayKit.Enums.FontStyle;
+using Justify = UnityEngine.UIElements.Justify;
+using Length = UnityEngine.UIElements.Length;
+using LengthUnit = UnityEngine.UIElements.LengthUnit;
+using Overflow = UnityEngine.UIElements.Overflow;
+using Position = UnityEngine.UIElements.Position;
+using Rotate = UnityEngine.UIElements.Rotate;
+using Scale = UnityEngine.UIElements.Scale;
+using StyleColor = UnityEngine.UIElements.StyleColor;
+// Unity's Style* struct aliases — replace our old wrapper classes
+using StyleFloat = UnityEngine.UIElements.StyleFloat;
+// Primitive type aliases
+using StyleKeyword = UnityEngine.UIElements.StyleKeyword;
+using StyleLength = UnityEngine.UIElements.StyleLength;
+using StyleRotate = UnityEngine.UIElements.StyleRotate;
+using StyleScale = UnityEngine.UIElements.StyleScale;
+using StyleTextShadow = UnityEngine.UIElements.StyleTextShadow;
+using StyleTransformOrigin = UnityEngine.UIElements.StyleTransformOrigin;
+using StyleTranslate = UnityEngine.UIElements.StyleTranslate;
+using TextOverflow = UnityEngine.UIElements.TextOverflow;
+using TextShadow = UnityEngine.UIElements.TextShadow;
+using TransformOrigin = UnityEngine.UIElements.TransformOrigin;
+using Translate = UnityEngine.UIElements.Translate;
+using UIElements = UnityEngine.UIElements;
+using Visibility = UnityEngine.UIElements.Visibility;
+using WhiteSpace = UnityEngine.UIElements.WhiteSpace;
+using Wrap = UnityEngine.UIElements.Wrap;
 
 // ============================================================================
-// Keyword
-// ============================================================================
-
-namespace DisplayKit
-{
-    /// <summary>Represents a style keyword for unset/initial values.</summary>
-    public enum StyleKeyword
-    {
-        Undefined,
-        Null,
-        Auto,
-        None,
-        Initial
-    }
-}
-
-// ============================================================================
-// Primitive Types (replace UnityEngine.UIElements types)
-// ============================================================================
-
-namespace DisplayKit
-{
-    /// <summary>Unit type for length values.</summary>
-    public enum LengthUnit
-    {
-        Pixel,
-        Percent
-    }
-
-    /// <summary>Represents a length value (pixel or percent).</summary>
-    public struct Length
-    {
-        public float value;
-        public LengthUnit unit;
-
-        public Length(float value, LengthUnit unit)
-        {
-            this.value = value;
-            this.unit = unit;
-        }
-
-        public static Length Percent(float value) => new Length(value, LengthUnit.Percent);
-
-        public static implicit operator Length(float pixelValue) => new Length(pixelValue, LengthUnit.Pixel);
-
-        public override string ToString() => unit == LengthUnit.Percent ? $"{value}%" : $"{value}px";
-    }
-
-    /// <summary>Represents a scale transformation.</summary>
-    public struct Scale
-    {
-        public Vector3 value;
-
-        public Scale(Vector3 value) { this.value = value; }
-
-        public static implicit operator Scale(Vector3 value) => new Scale(value);
-
-        public override string ToString() => value.ToString();
-    }
-
-    /// <summary>Represents a rotation transformation in degrees.</summary>
-    public struct Rotate
-    {
-        public float angle;
-
-        public Rotate(float angle) { this.angle = angle; }
-
-        public static implicit operator Rotate(float angle) => new Rotate(angle);
-
-        public override string ToString() => $"{angle}deg";
-    }
-
-    /// <summary>Represents a translation offset (pixel Vector2 or Length-based).</summary>
-    public struct Translate
-    {
-        public Vector2 value;
-        public bool useLengths;
-        public Length xLength;
-        public Length yLength;
-
-        public Translate(Vector2 value) { this.value = value; useLengths = false; xLength = yLength = default; }
-        public Translate(Length x, Length y) { xLength = x; yLength = y; useLengths = true; value = default; }
-
-        public static implicit operator Translate(Vector2 value) => new Translate(value);
-
-        public override string ToString() => useLengths ? $"({xLength}, {yLength})" : value.ToString();
-    }
-
-    /// <summary>Represents a transform origin point.</summary>
-    public struct TransformOrigin
-    {
-        public float x;
-        public float y;
-        public float z;
-
-        public TransformOrigin(float x, float y, float z)
-        {
-            this.x = x;
-            this.y = y;
-            this.z = z;
-        }
-
-        public override string ToString() => $"({x}, {y}, {z})";
-    }
-
-    /// <summary>Represents a text shadow effect.</summary>
-    public struct TextShadow
-    {
-        public Color color;
-        public Vector2 offset;
-        public float blurRadius;
-
-        public TextShadow(StyleKeyword keyword)
-        {
-            color = Color.clear;
-            offset = Vector2.zero;
-            blurRadius = 0f;
-        }
-
-        public override string ToString() => $"Shadow(color={color}, offset={offset}, blur={blurRadius})";
-    }
-}
-
-// ============================================================================
-// BaseStyle - Abstract base class for all style wrappers with CSS parsing
+// CSS Parsing Helpers (internal to StyleParser)
 // ============================================================================
 
 namespace DisplayKit
 {
-    /// <summary>
-    /// Abstract base class for all style value wrappers.
-    /// Stores the raw CSS string and supports keyword-based styles.
-    /// Parses input like "200px", "rgb(0,0,0)", "center", "flex-start", "initial" etc.
-    /// </summary>
-    public abstract class BaseStyle
+    /// <summary>Internal CSS value parsing utilities.</summary>
+    internal static class CssParse
     {
-        /// <summary>The raw CSS string value (e.g. "200px", "rgb(0,0,0)", "center").</summary>
-        public string RawValue { get; set; }
+        public static string StripSuffix(string s, string suffix) =>
+            s.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)
+                ? s.Substring(0, s.Length - suffix.Length) : s;
 
-        /// <summary>The CSS property name this style belongs to (e.g. "flex-grow", "background-color").</summary>
-        public string CssPropertyName { get; set; }
-
-        /// <summary>The style keyword, or <see cref="StyleKeyword.Undefined"/> when a concrete value is set.</summary>
-        public StyleKeyword Keyword { get; protected set; }
-
-        /// <summary>Whether this style represents a keyword rather than a concrete value.</summary>
-        public bool IsKeyword => Keyword != StyleKeyword.Undefined;
-
-        /// <summary>Creates an empty (undefined) style.</summary>
-        protected BaseStyle()
+        public static bool TryParseKeyword(string raw, out StyleKeyword keyword)
         {
-            Keyword = StyleKeyword.Undefined;
+            keyword = StyleKeyword.Undefined;
+            if (string.IsNullOrEmpty(raw)) return false;
+            switch (raw.Trim().ToLowerInvariant())
+            {
+                case "initial": keyword = StyleKeyword.Initial; return true;
+                case "auto": keyword = StyleKeyword.Auto; return true;
+                case "none": keyword = StyleKeyword.None; return true;
+                case "null": keyword = StyleKeyword.Null; return true;
+                default: return false;
+            }
         }
 
-        /// <summary>Creates a style from a raw CSS string and parses it immediately.</summary>
-        protected BaseStyle(string rawValue)
+        public static StyleFloat ParseFloat(string raw)
         {
-            RawValue = rawValue?.Trim();
-            Parse();
+            if (TryParseKeyword(raw, out var kw)) return new StyleFloat(kw);
+            string num = StripSuffix(raw.Trim(), "px");
+            return float.TryParse(num, NumberStyles.Float, CultureInfo.InvariantCulture, out float v)
+                ? new StyleFloat(v) : new StyleFloat(0f);
         }
 
-        /// <summary>Creates a keyword-only style.</summary>
-        protected BaseStyle(StyleKeyword keyword)
+        public static StyleColor ParseColor(string raw)
         {
-            Keyword = keyword;
-            RawValue = keyword.ToString().ToLowerInvariant();
+            if (TryParseKeyword(raw, out var kw)) return new StyleColor(kw);
+            var t = raw.Trim();
+            if (TryNamedColor(t, out Color nc)) return nc;
+            var rm = RgbRegex.Match(t);
+            if (rm.Success)
+            {
+                float r = int.Parse(rm.Groups[1].Value) / 255f;
+                float g = int.Parse(rm.Groups[2].Value) / 255f;
+                float b = int.Parse(rm.Groups[3].Value) / 255f;
+                float a = rm.Groups[4].Success ? float.Parse(rm.Groups[4].Value, CultureInfo.InvariantCulture) : 1f;
+                return new Color(r, g, b, a);
+            }
+            var hm = HexRegex.Match(t);
+            if (hm.Success) return HexToColor(hm.Groups[1].Value);
+            return new StyleColor(StyleKeyword.None);
         }
 
-        /// <summary>Parse <see cref="RawValue"/> into concrete value or keyword.</summary>
-        protected abstract void Parse();
+        private static readonly Regex RgbRegex = new Regex(
+            @"rgba?\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+))?\s*\)",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex HexRegex = new Regex(
+            @"^#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$", RegexOptions.Compiled);
 
-        /// <summary>
-        /// Parse space-separated float values from a CSS string.
-        /// Handles "px", "%", "deg" suffixes by stripping them.
-        /// Returns null if not enough values could be parsed.
-        /// </summary>
-        protected static float[] ParseFloats(string raw, int minCount)
+        private static bool TryNamedColor(string name, out Color c)
         {
-            if (string.IsNullOrWhiteSpace(raw)) return null;
+            switch (name.ToLowerInvariant())
+            {
+                case "red":
+                case "green":
+                case "blue":
+                case "white":
+                case "black":
+                case "yellow":
+                case "cyan":
+                case "magenta":
+                case "gray":
+                case "grey":
+                case "clear":
+                case "transparent":
+                    c = name.ToLowerInvariant() switch
+                    {
+                        "red" => Color.red,
+                        "green" => Color.green,
+                        "blue" => Color.blue,
+                        "white" => Color.white,
+                        "black" => Color.black,
+                        "yellow" => Color.yellow,
+                        "cyan" => Color.cyan,
+                        "magenta" => Color.magenta,
+                        "gray" or "grey" => Color.gray,
+                        "clear" or "transparent" => Color.clear,
+                        _ => default
+                    };
+                    return true;
+                default: c = default; return false;
+            }
+        }
+
+        private static Color HexToColor(string hex)
+        {
+            int r, g, b, a = 255;
+            switch (hex.Length)
+            {
+                case 3: r = Hd(hex[0]) * 17; g = Hd(hex[1]) * 17; b = Hd(hex[2]) * 17; break;
+                case 4: r = Hd(hex[0]) * 17; g = Hd(hex[1]) * 17; b = Hd(hex[2]) * 17; a = Hd(hex[3]) * 17; break;
+                case 6: r = Hd(hex[0]) << 4 | Hd(hex[1]); g = Hd(hex[2]) << 4 | Hd(hex[3]); b = Hd(hex[4]) << 4 | Hd(hex[5]); break;
+                case 8: r = Hd(hex[0]) << 4 | Hd(hex[1]); g = Hd(hex[2]) << 4 | Hd(hex[3]); b = Hd(hex[4]) << 4 | Hd(hex[5]); a = Hd(hex[6]) << 4 | Hd(hex[7]); break;
+                default: return Color.clear;
+            }
+            return new Color(r / 255f, g / 255f, b / 255f, a / 255f);
+        }
+
+        private static int Hd(char c) => c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : 0;
+
+        public static StyleLength ParseLength(string raw)
+        {
+            if (TryParseKeyword(raw, out var kw)) return new StyleLength(kw);
+            var t = raw.Trim();
+            if (t.EndsWith("%") && float.TryParse(t.TrimEnd('%'), NumberStyles.Float, CultureInfo.InvariantCulture, out float pct))
+                return new Length(pct, LengthUnit.Percent);
+            string n = t.EndsWith("px", StringComparison.OrdinalIgnoreCase) ? t.Substring(0, t.Length - 2) : t;
+            return float.TryParse(n, NumberStyles.Float, CultureInfo.InvariantCulture, out float px)
+                ? new Length(px, LengthUnit.Pixel) : new StyleLength(StyleKeyword.None);
+        }
+
+        public static Length ParseLengthRaw(string s)
+        {
+            s = s.Trim();
+            if (s.EndsWith("%") && float.TryParse(s.TrimEnd('%'), NumberStyles.Float, CultureInfo.InvariantCulture, out float v))
+                return new Length(v, LengthUnit.Percent);
+            string num = StripSuffix(s, "px");
+            float.TryParse(num, NumberStyles.Float, CultureInfo.InvariantCulture, out float pv);
+            return new Length(pv, LengthUnit.Pixel);
+        }
+
+        public static StyleScale ParseScale(string raw)
+        {
+            if (TryParseKeyword(raw, out var kw)) return new StyleScale(kw);
             var parts = raw.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
-            var result = new float[parts.Length];
+            var nums = new float[parts.Length];
             for (int i = 0; i < parts.Length; i++)
             {
-                string p = parts[i].Trim();
-                p = StripSuffix(p, "px");
-                p = StripSuffix(p, "%");
-                p = StripSuffix(p, "deg");
-                if (!float.TryParse(p, NumberStyles.Float, CultureInfo.InvariantCulture, out result[i]))
-                    return result.Length >= minCount ? result : null;
+                string p = StripSuffix(StripSuffix(StripSuffix(parts[i].Trim(), "px"), "%"), "deg");
+                if (!float.TryParse(p, NumberStyles.Float, CultureInfo.InvariantCulture, out nums[i]))
+                    return new StyleScale(StyleKeyword.None);
             }
-            return result.Length >= minCount ? result : null;
+            if (nums.Length == 0) return new StyleScale(StyleKeyword.None);
+            float x = nums[0], y = nums.Length > 1 ? nums[1] : x, z = nums.Length > 2 ? nums[2] : 1f;
+            return new Scale(new Vector3(x, y, z));
         }
 
-        public static string StripSuffix(string s, string suffix)
+        public static StyleRotate ParseRotate(string raw)
         {
-            return s.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)
-                ? s.Substring(0, s.Length - suffix.Length) : s;
+            if (TryParseKeyword(raw, out var kw)) return new StyleRotate(kw);
+            var parts = raw.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0) return new StyleRotate(StyleKeyword.None);
+            string angleStr = parts[parts.Length - 1].Trim();
+            if (TryParseAngle(angleStr, out float deg)) return new Rotate(deg);
+            return new StyleRotate(StyleKeyword.None);
         }
 
-        // ---- CSS → DisplayKit path mapping ----
+        private static bool TryParseAngle(string s, out float degrees)
+        {
+            degrees = 0f;
+            if (string.IsNullOrEmpty(s)) return false;
+            string lower = s.ToLowerInvariant();
+            float factor; string numStr;
+            if (lower.EndsWith("grad")) { factor = 0.9f; numStr = lower.Substring(0, lower.Length - 4); }
+            else if (lower.EndsWith("turn")) { factor = 360f; numStr = lower.Substring(0, lower.Length - 4); }
+            else if (lower.EndsWith("rad")) { factor = 180f / Mathf.PI; numStr = lower.Substring(0, lower.Length - 3); }
+            else if (lower.EndsWith("deg")) { factor = 1f; numStr = lower.Substring(0, lower.Length - 3); }
+            else { factor = 1f; numStr = lower; }
+            if (float.TryParse(numStr.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out float val))
+            { degrees = val * factor; return true; }
+            return false;
+        }
 
+        public static StyleTranslate ParseTranslate(string raw)
+        {
+            if (TryParseKeyword(raw, out var kw)) return new StyleTranslate(kw);
+            var parts = raw.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 2) return new StyleTranslate(StyleKeyword.None);
+            Length x = ParseLengthRaw(parts[0]), y = ParseLengthRaw(parts[1]);
+            float z = 0f;
+            if (parts.Length >= 3) { string nz = StripSuffix(parts[2].Trim(), "px"); float.TryParse(nz, NumberStyles.Float, CultureInfo.InvariantCulture, out z); }
+            return new Translate(x, y, z);
+        }
+
+        public static StyleTransformOrigin ParseTransformOrigin(string raw)
+        {
+            if (TryParseKeyword(raw, out var kw)) return new StyleTransformOrigin(kw);
+            var parts = raw.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+            float x = ParseOriginPart(parts, 0, 50f), y = ParseOriginPart(parts, 1, 50f), z = 0f;
+            if (parts.Length == 1 && TryOriginKeyword(parts[0].Trim(), out float kv, out bool isVert))
+            { if (isVert) { x = 50f; y = kv; } else { x = kv; y = 50f; } }
+            if (parts.Length >= 3) { string nz = StripSuffix(StripSuffix(parts[2].Trim(), "%"), "px"); float.TryParse(nz, NumberStyles.Float, CultureInfo.InvariantCulture, out z); }
+            return new TransformOrigin(x, y, z);
+        }
+
+        private static float ParseOriginPart(string[] parts, int idx, float fb)
+        {
+            if (idx >= parts.Length) return fb;
+            string s = parts[idx].Trim();
+            if (TryOriginKeyword(s, out float kv, out _)) return kv;
+            string n = StripSuffix(StripSuffix(s, "%"), "px");
+            return float.TryParse(n, NumberStyles.Float, CultureInfo.InvariantCulture, out float fv) ? fv : fb;
+        }
+
+        private static bool TryOriginKeyword(string s, out float v, out bool isVert)
+        {
+            switch (s.Trim().ToLowerInvariant())
+            {
+                case "top": v = 0f; isVert = true; return true;
+                case "bottom": v = 100f; isVert = true; return true;
+                case "left": v = 0f; isVert = false; return true;
+                case "right": v = 100f; isVert = false; return true;
+                case "center": v = 50f; isVert = false; return true;
+                default: v = 0f; isVert = false; return false;
+            }
+        }
+
+        public static StyleTextShadow ParseTextShadow(string raw)
+        {
+            if (TryParseKeyword(raw, out var kw)) return new StyleTextShadow(kw);
+            var parts = raw.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 2) return new StyleTextShadow(StyleKeyword.None);
+            Color color = Color.black; Vector2 offset = Vector2.zero; float blur = 0f;
+            int ni = 0;
+            for (int i = 0; i < parts.Length; i++)
+            {
+                string p = parts[i];
+                if (i == parts.Length - 1 || (i >= 2 && !IsNumPart(p)))
+                {
+                    var sc = ParseColor(string.Join(" ", parts, i, parts.Length - i));
+                    if (sc.keyword == StyleKeyword.Undefined) color = sc.value;
+                    break;
+                }
+                string ns = p.EndsWith("px", StringComparison.OrdinalIgnoreCase) ? p.Substring(0, p.Length - 2) : p;
+                if (float.TryParse(ns, NumberStyles.Float, CultureInfo.InvariantCulture, out float f))
+                {
+                    switch (ni) { case 0: offset.x = f; break; case 1: offset.y = f; break; case 2: blur = f; break; }
+                    ni++;
+                }
+            }
+            return new TextShadow { color = color, offset = offset, blurRadius = blur };
+        }
+
+        private static bool IsNumPart(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return false;
+            string n = s.EndsWith("px", StringComparison.OrdinalIgnoreCase) ? s.Substring(0, s.Length - 2) : s;
+            return float.TryParse(n, NumberStyles.Float, CultureInfo.InvariantCulture, out _);
+        }
+
+        public static T ParseEnum<T>(string raw) where T : struct, System.Enum
+        {
+            if (TryParseKeyword(raw, out var kw) && kw != StyleKeyword.None)
+                return default; // caller handles keyword separately for StyleEnum
+            if (!string.IsNullOrEmpty(raw))
+            {
+                var norm = raw.Trim().Replace("-", "");
+                if (System.Enum.TryParse(norm, true, out T val)) return val;
+            }
+            return default;
+        }
+
+        public static FontType? ParseFontDef(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return null;
+            string fontName = null;
+            int hash = raw.LastIndexOf('#');
+            if (hash >= 0)
+            {
+                int end = raw.IndexOf(')', hash);
+                fontName = end > hash ? raw.Substring(hash + 1, end - hash - 1).Trim() : raw.Substring(hash + 1).Trim();
+            }
+            else
+            {
+                int ls = raw.LastIndexOf('/');
+                int q = raw.IndexOf('?', ls > 0 ? ls : 0);
+                if (ls >= 0) fontName = (q > ls ? raw.Substring(ls + 1, q - ls - 1) : raw.Substring(ls + 1)).Trim();
+            }
+            if (!string.IsNullOrEmpty(fontName))
+            {
+                fontName = StripSuffix(StripSuffix(fontName, ".ttf"), ".otf").Trim('"', '\'', ' ', ')');
+                if (System.Enum.TryParse(fontName, true, out FontType ft)) return ft;
+            }
+            return null;
+        }
+    }
+}
+
+// ============================================================================
+// Enums (only custom types not present in Unity)
+// ============================================================================
+
+namespace DisplayKit.Enums
+{
+    /// <summary>Font style. Kept because Unity uses "BoldAndItalic" vs CSS "BoldItalic".</summary>
+    public enum FontStyle { Normal, Bold, Italic, BoldItalic }
+
+    /// <summary>Available font families in DisplayKit.</summary>
+    public enum FontType
+    {
+        Default, LiberationSans,
+        RobotoRegular, RobotoItalic, RobotoBold, RobotoBoldItalic,
+        RobotoLight, RobotoLightItalic, RobotoMedium, RobotoMediumItalic,
+        RobotoThin, RobotoThinItalic,
+        RobotoMonoRegular, RobotoMonoItalic, RobotoMonoBold, RobotoMonoBoldItalic,
+        RobotoMonoLight, RobotoMonoLightItalic, RobotoMonoMedium, RobotoMonoMediumItalic,
+        RobotoMonoThin, RobotoMonoThinItalic
+    }
+
+    public enum CanvasVisibility { Visible, Hidden }
+}
+
+// ============================================================================
+// Style Data Classes (use Unity's Style* types directly)
+// ============================================================================
+
+namespace DisplayKit
+{
+    public class BackgroundData { public StyleColor Color { get; set; } }
+
+    public class FlexData
+    {
+        public StyleFloat Grow { get; set; }
+        public StyleFloat Shrink { get; set; }
+        public StyleLength Basis { get; set; }
+        public UIElements.StyleEnum<FlexDirection> Direction { get; set; }
+        public UIElements.StyleEnum<Wrap> Wrap { get; set; }
+    }
+
+    public class AlignData
+    {
+        public UIElements.StyleEnum<Align> AlignItems { get; set; }
+        public UIElements.StyleEnum<Justify> JustifyContent { get; set; }
+        public UIElements.StyleEnum<Align> AlignSelf { get; set; }
+        public UIElements.StyleEnum<Align> AlignContent { get; set; }
+    }
+
+    public class SizeData
+    {
+        public StyleLength Width { get; set; }
+        public StyleLength Height { get; set; }
+        public StyleLength MinWidth { get; set; }
+        public StyleLength MinHeight { get; set; }
+        public StyleLength MaxWidth { get; set; }
+        public StyleLength MaxHeight { get; set; }
+    }
+
+    public class SpacingData
+    {
+        public StyleLength MarginTop { get; set; }
+        public StyleLength MarginBottom { get; set; }
+        public StyleLength MarginLeft { get; set; }
+        public StyleLength MarginRight { get; set; }
+        public StyleLength PaddingTop { get; set; }
+        public StyleLength PaddingBottom { get; set; }
+        public StyleLength PaddingLeft { get; set; }
+        public StyleLength PaddingRight { get; set; }
+    }
+
+    public class BorderData
+    {
+        public StyleColor Color { get; set; }
+        public StyleColor TopColor { get; set; }
+        public StyleColor BottomColor { get; set; }
+        public StyleColor LeftColor { get; set; }
+        public StyleColor RightColor { get; set; }
+        public StyleFloat Width { get; set; }
+        public StyleFloat TopWidth { get; set; }
+        public StyleFloat BottomWidth { get; set; }
+        public StyleFloat LeftWidth { get; set; }
+        public StyleFloat RightWidth { get; set; }
+        public StyleLength Radius { get; set; }
+        public StyleLength TopLeftRadius { get; set; }
+        public StyleLength TopRightRadius { get; set; }
+        public StyleLength BottomLeftRadius { get; set; }
+        public StyleLength BottomRightRadius { get; set; }
+    }
+
+    public class PositionData
+    {
+        public UIElements.StyleEnum<Position> Position { get; set; }
+        public StyleLength Top { get; set; }
+        public StyleLength Bottom { get; set; }
+        public StyleLength Left { get; set; }
+        public StyleLength Right { get; set; }
+    }
+
+    public class TransformData
+    {
+        public StyleTranslate Translate { get; set; }
+        public StyleScale Scale { get; set; }
+        public StyleRotate Rotate { get; set; }
+        public StyleTransformOrigin TransformOrigin { get; set; }
+    }
+
+    public class DisplayData
+    {
+        public UIElements.StyleEnum<DisplayStyle> Display { get; set; }
+        public UIElements.StyleEnum<Visibility> Visibility { get; set; }
+        public StyleFloat Opacity { get; set; }
+        public UIElements.StyleEnum<Overflow> Overflow { get; set; }
+    }
+
+    public class TextData
+    {
+        public FontType? Font { get; set; }
+        public UIElements.StyleEnum<Enums.FontStyle> FontStyle { get; set; }
+        public StyleLength FontSize { get; set; }
+        public StyleColor Color { get; set; }
+        public TextAnchor? Align { get; set; }
+        public UIElements.StyleEnum<WhiteSpace> Wrap { get; set; }
+        public UIElements.StyleEnum<TextOverflow> Overflow { get; set; }
+        public StyleLength LetterSpacing { get; set; }
+        public StyleLength WordSpacing { get; set; }
+        public StyleLength ParagraphSpacing { get; set; }
+        public StyleFloat OutlineWidth { get; set; }
+        public StyleColor OutlineColor { get; set; }
+        public StyleTextShadow TextShadow { get; set; }
+    }
+}
+
+// ============================================================================
+// IDisplayStyleTarget
+// ============================================================================
+
+namespace DisplayKit
+{
+    public interface IDisplayStyleTarget
+    {
+        BackgroundData Background { get; }
+        FlexData Flex { get; }
+        AlignData Align { get; }
+        SizeData Size { get; }
+        SpacingData Spacing { get; }
+        BorderData Border { get; }
+        PositionData Position { get; }
+        TransformData Transform { get; }
+        DisplayData Display { get; }
+        TextData Text { get; }
+    }
+}
+
+// ============================================================================
+// StyleParser — CSS string → direct apply to IDisplayStyleTarget
+// ============================================================================
+
+namespace DisplayKit
+{
+    /// <summary>Parses CSS style strings and directly applies values to DisplayKit elements.</summary>
+    public static class StyleParser
+    {
+        /// <summary>Parse a CSS string and apply all recognised properties to the element.</summary>
+        public static void ParseAndApply(string cssStyle, IDisplayStyleTarget element)
+        {
+            if (string.IsNullOrWhiteSpace(cssStyle) || element == null) return;
+            foreach (string decl in cssStyle.Split(';'))
+            {
+                string t = decl.Trim();
+                if (t.Length == 0) continue;
+                int ci = t.IndexOf(':');
+                if (ci < 0) continue;
+                string prop = t.Substring(0, ci).Trim().ToLowerInvariant();
+                string val = t.Substring(ci + 1).Trim();
+                if (prop.Length == 0 || val.Length == 0) continue;
+                Apply(prop, val, element);
+            }
+        }
+
+        private static void Apply(string prop, string val, IDisplayStyleTarget e)
+        {
+            switch (prop)
+            {
+                // Flex
+                case "flex-grow": e.Flex.Grow = CssParse.ParseFloat(val); break;
+                case "flex-shrink": e.Flex.Shrink = CssParse.ParseFloat(val); break;
+                case "flex-basis": e.Flex.Basis = CssParse.ParseLength(val); break;
+                case "flex-direction": e.Flex.Direction = new UIElements.StyleEnum<FlexDirection>(CssParse.ParseEnum<FlexDirection>(val)); break;
+                case "flex-wrap": e.Flex.Wrap = new UIElements.StyleEnum<Wrap>(CssParse.ParseEnum<Wrap>(val)); break;
+                // Align
+                case "align-items": e.Align.AlignItems = new UIElements.StyleEnum<Align>(CssParse.ParseEnum<Align>(val)); break;
+                case "justify-content": e.Align.JustifyContent = new UIElements.StyleEnum<Justify>(CssParse.ParseEnum<Justify>(val)); break;
+                case "align-self": e.Align.AlignSelf = new UIElements.StyleEnum<Align>(CssParse.ParseEnum<Align>(val)); break;
+                case "align-content": e.Align.AlignContent = new UIElements.StyleEnum<Align>(CssParse.ParseEnum<Align>(val)); break;
+                // Size
+                case "width": e.Size.Width = CssParse.ParseLength(val); break;
+                case "height": e.Size.Height = CssParse.ParseLength(val); break;
+                case "min-width": e.Size.MinWidth = CssParse.ParseLength(val); break;
+                case "min-height": e.Size.MinHeight = CssParse.ParseLength(val); break;
+                case "max-width": e.Size.MaxWidth = CssParse.ParseLength(val); break;
+                case "max-height": e.Size.MaxHeight = CssParse.ParseLength(val); break;
+                // Background
+                case "background-color": e.Background.Color = CssParse.ParseColor(val); break;
+                // Spacing
+                case "margin-top": e.Spacing.MarginTop = CssParse.ParseLength(val); break;
+                case "margin-bottom": e.Spacing.MarginBottom = CssParse.ParseLength(val); break;
+                case "margin-left": e.Spacing.MarginLeft = CssParse.ParseLength(val); break;
+                case "margin-right": e.Spacing.MarginRight = CssParse.ParseLength(val); break;
+                case "padding-top": e.Spacing.PaddingTop = CssParse.ParseLength(val); break;
+                case "padding-bottom": e.Spacing.PaddingBottom = CssParse.ParseLength(val); break;
+                case "padding-left": e.Spacing.PaddingLeft = CssParse.ParseLength(val); break;
+                case "padding-right": e.Spacing.PaddingRight = CssParse.ParseLength(val); break;
+                // Border
+                case "border-color": e.Border.Color = CssParse.ParseColor(val); break;
+                case "border-top-color": e.Border.TopColor = CssParse.ParseColor(val); break;
+                case "border-bottom-color": e.Border.BottomColor = CssParse.ParseColor(val); break;
+                case "border-left-color": e.Border.LeftColor = CssParse.ParseColor(val); break;
+                case "border-right-color": e.Border.RightColor = CssParse.ParseColor(val); break;
+                case "border-width": e.Border.Width = CssParse.ParseFloat(val); break;
+                case "border-top-width": e.Border.TopWidth = CssParse.ParseFloat(val); break;
+                case "border-bottom-width": e.Border.BottomWidth = CssParse.ParseFloat(val); break;
+                case "border-left-width": e.Border.LeftWidth = CssParse.ParseFloat(val); break;
+                case "border-right-width": e.Border.RightWidth = CssParse.ParseFloat(val); break;
+                case "border-radius": e.Border.Radius = CssParse.ParseLength(val); break;
+                case "border-top-left-radius": e.Border.TopLeftRadius = CssParse.ParseLength(val); break;
+                case "border-top-right-radius": e.Border.TopRightRadius = CssParse.ParseLength(val); break;
+                case "border-bottom-left-radius": e.Border.BottomLeftRadius = CssParse.ParseLength(val); break;
+                case "border-bottom-right-radius": e.Border.BottomRightRadius = CssParse.ParseLength(val); break;
+                // Position
+                case "position": e.Position.Position = new UIElements.StyleEnum<Position>(CssParse.ParseEnum<Position>(val)); break;
+                case "top": e.Position.Top = CssParse.ParseLength(val); break;
+                case "bottom": e.Position.Bottom = CssParse.ParseLength(val); break;
+                case "left": e.Position.Left = CssParse.ParseLength(val); break;
+                case "right": e.Position.Right = CssParse.ParseLength(val); break;
+                // Transform
+                case "translate": e.Transform.Translate = CssParse.ParseTranslate(val); break;
+                case "scale": e.Transform.Scale = CssParse.ParseScale(val); break;
+                case "rotate": e.Transform.Rotate = CssParse.ParseRotate(val); break;
+                case "transform-origin": e.Transform.TransformOrigin = CssParse.ParseTransformOrigin(val); break;
+                // Display
+                case "display": e.Display.Display = new UIElements.StyleEnum<DisplayStyle>(CssParse.ParseEnum<DisplayStyle>(val)); break;
+                case "visibility": e.Display.Visibility = new UIElements.StyleEnum<Visibility>(CssParse.ParseEnum<Visibility>(val)); break;
+                case "opacity": e.Display.Opacity = CssParse.ParseFloat(val); break;
+                case "overflow": e.Display.Overflow = new UIElements.StyleEnum<Overflow>(CssParse.ParseEnum<Overflow>(val)); break;
+                // Text
+                case "color": e.Text.Color = CssParse.ParseColor(val); break;
+                case "font-size": e.Text.FontSize = CssParse.ParseLength(val); break;
+                case "font-style": e.Text.FontStyle = new UIElements.StyleEnum<Enums.FontStyle>(CssParse.ParseEnum<Enums.FontStyle>(val)); break;
+                case "white-space": e.Text.Wrap = new UIElements.StyleEnum<WhiteSpace>(CssParse.ParseEnum<WhiteSpace>(val)); break;
+                case "text-overflow": e.Text.Overflow = new UIElements.StyleEnum<TextOverflow>(CssParse.ParseEnum<TextOverflow>(val)); break;
+                case "letter-spacing": e.Text.LetterSpacing = CssParse.ParseLength(val); break;
+                case "word-spacing": e.Text.WordSpacing = CssParse.ParseLength(val); break;
+                case "paragraph-spacing": e.Text.ParagraphSpacing = CssParse.ParseLength(val); break;
+                case "outline-width": e.Text.OutlineWidth = CssParse.ParseFloat(val); break;
+                case "outline-color": e.Text.OutlineColor = CssParse.ParseColor(val); break;
+                case "-unity-text-outline-width": e.Text.OutlineWidth = CssParse.ParseFloat(val); break;
+                case "-unity-text-outline-color": e.Text.OutlineColor = CssParse.ParseColor(val); break;
+                case "-unity-paragraph-spacing": e.Text.ParagraphSpacing = CssParse.ParseLength(val); break;
+                case "-unity-font-definition": e.Text.Font = CssParse.ParseFontDef(val); break;
+                case "text-shadow": e.Text.TextShadow = CssParse.ParseTextShadow(val); break;
+            }
+        }
+        /// <summary>
+        /// Legacy: parse CSS into raw property→value pairs for deferred code generation.
+        /// Use <see cref="ParseAndApply"/> for direct application to elements.
+        /// </summary>
+        public static Dictionary<string, string> Parse(string cssStyle)
+        {
+            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(cssStyle)) return result;
+            foreach (string decl in cssStyle.Split(';'))
+            {
+                string t = decl.Trim();
+                if (t.Length == 0) continue;
+                int ci = t.IndexOf(':');
+                if (ci < 0) continue;
+                string prop = t.Substring(0, ci).Trim().ToLowerInvariant();
+                string val = t.Substring(ci + 1).Trim();
+                if (prop.Length > 0 && val.Length > 0)
+                    result[prop] = val;
+            }
+            return result;
+        }
+    }
+
+    // ============================================================================
+    // StyleCodeGen — raw CSS property→value dictionary → C# assignment code
+    // ============================================================================
+
+    /// <summary>Generates C# code from parsed CSS key-value pairs.</summary>
+    public static class StyleCodeGen
+    {
         private static readonly Dictionary<string, string> PathMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["flex-grow"] = ".Flex.Grow",
@@ -286,1405 +696,373 @@ namespace DisplayKit
             ["text-shadow"] = ".Text.TextShadow",
         };
 
-        /// <summary>Resolve the full DisplayKit property path (e.g. "element" + ".Flex.Grow").</summary>
-        protected string FullPath(string baseVarName)
+        // Property types for code-gen: float, length, color, enum, transform, etc.
+        private static readonly HashSet<string> FloatProps = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        { "flex-grow","flex-shrink","border-width","border-top-width","border-bottom-width",
+          "border-left-width","border-right-width","opacity","outline-width","-unity-text-outline-width" };
+        private static readonly HashSet<string> LengthProps = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        { "flex-basis","width","height","min-width","min-height","max-width","max-height",
+          "margin-top","margin-bottom","margin-left","margin-right",
+          "padding-top","padding-bottom","padding-left","padding-right",
+          "top","bottom","left","right","border-radius","border-top-left-radius","border-top-right-radius",
+          "border-bottom-left-radius","border-bottom-right-radius",
+          "font-size","letter-spacing","word-spacing","paragraph-spacing","-unity-paragraph-spacing" };
+        private static readonly HashSet<string> ColorProps = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        { "background-color","border-color","border-top-color","border-bottom-color",
+          "border-left-color","border-right-color","color","outline-color","-unity-text-outline-color" };
+        private static readonly HashSet<string> EnumProps = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        { "flex-direction","flex-wrap","align-items","justify-content","align-self","align-content",
+          "position","display","visibility","overflow","font-style","white-space","text-overflow" };
+
+        /// <summary>Write C# assignments for all non-keyword parsed styles.</summary>
+        public static void WriteAssignments(Dictionary<string, string> styles, string varName, StringBuilder sb,string prefix)
         {
-            if (!string.IsNullOrEmpty(CssPropertyName) && PathMap.TryGetValue(CssPropertyName, out var suffix))
-                return baseVarName + suffix;
-            return baseVarName; // fallback: use as-is
-        }
-
-        /// <summary>
-        /// Generate C# assignment code using the CSS→DisplayKit path mapping.
-        /// <c>style.ToCode("element", sb)</c> outputs <c>element.Flex.Grow = 1f;</c>
-        /// </summary>
-        public abstract void ToCode(string targetVarName, StringBuilder sb);
-
-        // ---- keyword helpers ----
-
-        protected static bool TryParseKeyword(string raw, out StyleKeyword keyword)
-        {
-            if (string.IsNullOrEmpty(raw))
+            if (styles == null) return;
+            foreach (var kv in styles)
             {
-                keyword = StyleKeyword.Undefined;
-                return false;
-            }
-
-            switch (raw.Trim().ToLowerInvariant())
-            {
-                case "initial":
-                    keyword = StyleKeyword.Initial;
-                    return true;
-                case "auto":
-                    keyword = StyleKeyword.Auto;
-                    return true;
-                case "none":
-                    keyword = StyleKeyword.None;
-                    return true;
-                case "null":
-                    keyword = StyleKeyword.Null;
-                    return true;
-                default:
-                    keyword = StyleKeyword.Undefined;
-                    return false;
+                if (CssParse.TryParseKeyword(kv.Value, out _)) continue;
+                string path = PathMap.TryGetValue(kv.Key, out var s) ? varName + s : varName + "." + kv.Key;
+                string code = GenerateAssignment(kv.Key, kv.Value, path);
+                if (code != null)
+                    sb.AppendLine(prefix + code);
             }
         }
 
-        /// <summary>Returns the raw CSS string.</summary>
-        public override string ToString() => RawValue ?? string.Empty;
-    }
-}
-
-// ============================================================================
-// Style Wrapper Classes (inherit BaseStyle, support CSS string parsing)
-// ============================================================================
-
-namespace DisplayKit
-{
-    /// <summary>
-    /// Wrapper for float style values.
-    /// Parses "1", "0.5", "initial", "auto", etc.
-    /// </summary>
-    public class StyleFloat : BaseStyle
-    {
-        public float Value { get; set; }
-
-        public StyleFloat() : base() { }
-        public StyleFloat(float value) : base() { Value = value; RawValue = value.ToString(CultureInfo.InvariantCulture); }
-        public StyleFloat(string rawValue) : base(rawValue) { }
-        public StyleFloat(StyleKeyword keyword) : base(keyword) { }
-
-        protected override void Parse()
+        private static string GenerateAssignment(string prop, string rawVal, string path)
         {
-            if (TryParseKeyword(RawValue, out var kw))
+            if (FloatProps.Contains(prop))
             {
-                Keyword = kw;
-                return;
+                string n = CssParse.StripSuffix(rawVal.Trim(), "px");
+                return float.TryParse(n, NumberStyles.Float, CultureInfo.InvariantCulture, out float f)
+                    ? $"{path} = {f.ToString(CultureInfo.InvariantCulture)}f;" : null;
             }
-            string num = StripSuffix(RawValue.Trim(), "px");
-            if (float.TryParse(num, NumberStyles.Float, CultureInfo.InvariantCulture, out float val))
+            if (LengthProps.Contains(prop))
             {
-                Value = val;
-                Keyword = StyleKeyword.Undefined;
-                return;
+                var t = rawVal.Trim();
+                if (t.EndsWith("%") && float.TryParse(t.TrimEnd('%'), NumberStyles.Float, CultureInfo.InvariantCulture, out float pct))
+                    return $"{path} = Length.Percent({pct.ToString(CultureInfo.InvariantCulture)}f);";
+                string n = t.EndsWith("px", StringComparison.OrdinalIgnoreCase) ? t.Substring(0, t.Length - 2) : t;
+                return float.TryParse(n, NumberStyles.Float, CultureInfo.InvariantCulture, out float px)
+                    ? $"{path} = {px.ToString(CultureInfo.InvariantCulture)}f;" : null;
             }
-            Value = 0f;
+            if (ColorProps.Contains(prop))
+                return GenerateColorCode(rawVal, path);
+            if (EnumProps.Contains(prop))
+                return GenerateEnumCode(prop, rawVal, path);
+            // Transform properties
+            switch (prop)
+            {
+                case "translate": return GenerateTranslateCode(rawVal, path);
+                case "scale": return GenerateScaleCode(rawVal, path);
+                case "rotate": return GenerateRotateCode(rawVal, path);
+                case "transform-origin": return GenerateTransformOriginCode(rawVal, path);
+                case "text-shadow": return GenerateTextShadowCode(rawVal, path);
+                case "-unity-font-definition":
+                    var ft = CssParse.ParseFontDef(rawVal);
+                    return ft.HasValue ? $"{path} = FontType.{ft.Value};" : null;
+            }
+            return null;
         }
 
-        public static implicit operator StyleFloat(float value) => new StyleFloat(value);
-        public static implicit operator StyleFloat(string rawValue) => new StyleFloat(rawValue);
-        public static implicit operator StyleFloat(StyleKeyword keyword) => new StyleFloat(keyword);
-
-        public override void ToCode(string targetVarName, StringBuilder sb)
+        private static string GenerateColorCode(string raw, string path)
         {
-            if (IsKeyword) return;
-            sb.AppendLine($"{FullPath(targetVarName)} = {Value.ToString(CultureInfo.InvariantCulture)}f;");
-        }
-    }
-
-    /// <summary>
-    /// Wrapper for Color style values.
-    /// Parses "red", "rgb(51,51,51)", "rgba(0,0,0,0.5)", "#333", "#333333", "#333333AA", etc.
-    /// </summary>
-    public class StyleColor : BaseStyle
-    {
-        private static readonly Regex RgbRegex = new Regex(
-            @"rgba?\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+))?\s*\)",
-            RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
-        private static readonly Regex HexRegex = new Regex(
-            @"^#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$",
-            RegexOptions.Compiled);
-
-        public Color Value { get; set; }
-
-        public StyleColor() : base() { Value = Color.clear; }
-        public StyleColor(Color value) : base() { Value = value; RawValue = ToCssString(value); }
-        public StyleColor(string rawValue) : base(rawValue) { }
-        public StyleColor(StyleKeyword keyword) : base(keyword) { Value = Color.clear; }
-
-        protected override void Parse()
-        {
-            if (TryParseKeyword(RawValue, out var kw))
-            {
-                Keyword = kw;
-                return;
-            }
-
-            var trimmed = RawValue.Trim();
-
-            if (TryParseNamedColor(trimmed, out Color namedColor))
-            {
-                Value = namedColor;
-                Keyword = StyleKeyword.Undefined;
-                return;
-            }
-
-            var rgbMatch = RgbRegex.Match(trimmed);
-            if (rgbMatch.Success)
-            {
-                float r = int.Parse(rgbMatch.Groups[1].Value) / 255f;
-                float g = int.Parse(rgbMatch.Groups[2].Value) / 255f;
-                float b = int.Parse(rgbMatch.Groups[3].Value) / 255f;
-                float a = rgbMatch.Groups[4].Success
-                    ? float.Parse(rgbMatch.Groups[4].Value, CultureInfo.InvariantCulture)
-                    : 1f;
-                Value = new Color(r, g, b, a);
-                Keyword = StyleKeyword.Undefined;
-                return;
-            }
-
-            var hexMatch = HexRegex.Match(trimmed);
-            if (hexMatch.Success)
-            {
-                Value = ParseHexColor(hexMatch.Groups[1].Value);
-                Keyword = StyleKeyword.Undefined;
-                return;
-            }
-
-            Value = Color.clear;
+            var c = CssParse.ParseColor(raw);
+            if (c.keyword != StyleKeyword.Undefined) return null;
+            return $"{path} = new Color({c.value.r}f, {c.value.g}f, {c.value.b}f, {c.value.a}f);";
         }
 
-        private static bool TryParseNamedColor(string name, out Color color)
+        private static string GenerateEnumCode(string prop, string raw, string path)
         {
-            switch (name.ToLowerInvariant())
-            {
-                case "red": color = Color.red; return true;
-                case "green": color = Color.green; return true;
-                case "blue": color = Color.blue; return true;
-                case "white": color = Color.white; return true;
-                case "black": color = Color.black; return true;
-                case "yellow": color = Color.yellow; return true;
-                case "cyan": color = Color.cyan; return true;
-                case "magenta": color = Color.magenta; return true;
-                case "gray":
-                case "grey": color = Color.gray; return true;
-                case "clear":
-                case "transparent": color = Color.clear; return true;
-                default: color = default; return false;
-            }
+            string enumType = GetEnumType(prop);
+            if (enumType == null || CssParse.TryParseKeyword(raw, out _)) return null;
+            // CSS kebab-case → PascalCase enum member: "flex-start" → "FlexStart"
+            var norm = raw.Trim().Replace("-", "");
+            if (string.IsNullOrEmpty(norm)) return null;
+            // Capitalise first letter
+            var member = char.ToUpperInvariant(norm[0]) + norm.Substring(1);
+            return $"{path} = {enumType}.{member};";
         }
 
-        private static Color ParseHexColor(string hex)
+        private static string GetEnumType(string prop) => prop switch
         {
-            int r, g, b, a = 255;
-            switch (hex.Length)
-            {
-                case 3: r = HexD(hex[0]) * 17; g = HexD(hex[1]) * 17; b = HexD(hex[2]) * 17; break;
-                case 4: r = HexD(hex[0]) * 17; g = HexD(hex[1]) * 17; b = HexD(hex[2]) * 17; a = HexD(hex[3]) * 17; break;
-                case 6: r = HexD(hex[0]) << 4 | HexD(hex[1]); g = HexD(hex[2]) << 4 | HexD(hex[3]); b = HexD(hex[4]) << 4 | HexD(hex[5]); break;
-                case 8: r = HexD(hex[0]) << 4 | HexD(hex[1]); g = HexD(hex[2]) << 4 | HexD(hex[3]); b = HexD(hex[4]) << 4 | HexD(hex[5]); a = HexD(hex[6]) << 4 | HexD(hex[7]); break;
-                default: return Color.clear;
-            }
-            return new Color(r / 255f, g / 255f, b / 255f, a / 255f);
+            "flex-direction" => "FlexDirection",
+            "flex-wrap" => "Wrap",
+            "align-items" or "align-self" or "align-content" => "Align",
+            "justify-content" => "Justify",
+            "position" => "Position",
+            "display" => "DisplayStyle",
+            "visibility" => "Visibility",
+            "overflow" => "Overflow",
+            "font-style" => "FontStyle",
+            "white-space" => "WhiteSpace",
+            "text-overflow" => "TextOverflow",
+            _ => null
+        };
+
+        private static string GenerateTranslateCode(string raw, string path)
+        {
+            var v = CssParse.ParseTranslate(raw);
+            if (v.keyword != StyleKeyword.Undefined) return null;
+            var t = v.value;
+            string x = LengthCode(t.x), y = LengthCode(t.y);
+            return t.z != 0f
+                ? $"{path} = new Translate({x}, {y}, {t.z.ToString(CultureInfo.InvariantCulture)}f);"
+                : $"{path} = new Translate({x}, {y});";
         }
 
-        private static int HexD(char c) =>
-            c >= '0' && c <= '9' ? c - '0' :
-            c >= 'a' && c <= 'f' ? c - 'a' + 10 :
-            c >= 'A' && c <= 'F' ? c - 'A' + 10 : 0;
-
-        private static string ToCssString(Color c) =>
-            $"rgba({Mathf.RoundToInt(c.r * 255)},{Mathf.RoundToInt(c.g * 255)},{Mathf.RoundToInt(c.b * 255)},{c.a.ToString(CultureInfo.InvariantCulture)})";
-
-        public static implicit operator StyleColor(Color value) => new StyleColor(value);
-        public static implicit operator StyleColor(string rawValue) => new StyleColor(rawValue);
-        public static implicit operator StyleColor(StyleKeyword keyword) => new StyleColor(keyword);
-
-        public override void ToCode(string targetVarName, StringBuilder sb)
+        private static string GenerateScaleCode(string raw, string path)
         {
-            if (IsKeyword) return;
-            sb.AppendLine($"{FullPath(targetVarName)} = new Color({Value.r}f, {Value.g}f, {Value.b}f, {Value.a}f);");
-        }
-    }
-
-    /// <summary>
-    /// Wrapper for Length style values.
-    /// Parses "200px", "50%", "auto", "200" (defaults to px), etc.
-    /// </summary>
-    public class StyleLength : BaseStyle
-    {
-        public Length Value { get; set; }
-
-        public StyleLength() : base() { }
-        public StyleLength(Length value) : base() { Value = value; RawValue = value.ToString(); }
-        public StyleLength(string rawValue) : base(rawValue) { }
-        public StyleLength(StyleKeyword keyword) : base(keyword) { }
-
-        protected override void Parse()
-        {
-            if (TryParseKeyword(RawValue, out var kw))
-            {
-                Keyword = kw;
-                return;
-            }
-
-            var trimmed = RawValue.Trim();
-
-            if (trimmed.EndsWith("%"))
-            {
-                if (float.TryParse(trimmed.TrimEnd('%'), NumberStyles.Float, CultureInfo.InvariantCulture, out float pct))
-                {
-                    Value = new Length(pct, LengthUnit.Percent);
-                    Keyword = StyleKeyword.Undefined;
-                    return;
-                }
-            }
-
-            string numPart = trimmed.EndsWith("px", StringComparison.OrdinalIgnoreCase)
-                ? trimmed.Substring(0, trimmed.Length - 2)
-                : trimmed;
-
-            if (float.TryParse(numPart, NumberStyles.Float, CultureInfo.InvariantCulture, out float px))
-            {
-                Value = new Length(px, LengthUnit.Pixel);
-                Keyword = StyleKeyword.Undefined;
-                return;
-            }
-
-            Value = default;
+            var v = CssParse.ParseScale(raw);
+            if (v.keyword != StyleKeyword.Undefined) return null;
+            var s = v.value.value;
+            return $"{path} = new Scale(new Vector3({s.x.ToString(CultureInfo.InvariantCulture)}f, {s.y.ToString(CultureInfo.InvariantCulture)}f, {s.z.ToString(CultureInfo.InvariantCulture)}f));";
         }
 
-        public static implicit operator StyleLength(Length value) => new StyleLength(value);
-        public static implicit operator StyleLength(float pixelValue) => new StyleLength(new Length(pixelValue, LengthUnit.Pixel));
-        public static implicit operator StyleLength(string rawValue) => new StyleLength(rawValue);
-        public static implicit operator StyleLength(StyleKeyword keyword) => new StyleLength(keyword);
-
-        public override void ToCode(string targetVarName, StringBuilder sb)
+        private static string GenerateRotateCode(string raw, string path)
         {
-            if (IsKeyword) return;
-            if (Value.unit == LengthUnit.Percent)
-                sb.AppendLine($"{FullPath(targetVarName)} = Length.Percent({Value.value.ToString(CultureInfo.InvariantCulture)}f);");
-            else
-                sb.AppendLine($"{FullPath(targetVarName)} = {Value.value.ToString(CultureInfo.InvariantCulture)}f;");
-        }
-    }
-
-    /// <summary>
-    /// Generic wrapper for enum style values.
-    /// Parses CSS kebab-case ("flex-start" → FlexStart, "space-between" → SpaceBetween, "nowrap" → NoWrap)
-    /// or direct enum names. Falls back to keyword if no enum match.
-    /// </summary>
-    public class StyleEnum<T> : BaseStyle where T : struct, System.Enum
-    {
-        public T Value { get; set; }
-
-        public StyleEnum() : base() { Value = default; }
-        public StyleEnum(T value) : base()
-        {
-            Value = value;
-            RawValue = value.ToString().ToLowerInvariant();
-        }
-        public StyleEnum(string rawValue) : base(rawValue) { }
-        public StyleEnum(StyleKeyword keyword) : base(keyword) { Value = default; }
-
-        protected override void Parse()
-        {
-            // Try as typed enum value first (handles "none" for DisplayStyle.None before keyword)
-            if (TryParseEnum(RawValue, out T enumVal))
-            {
-                Value = enumVal;
-                Keyword = StyleKeyword.Undefined;
-                return;
-            }
-
-            if (TryParseKeyword(RawValue, out var kw))
-            {
-                Keyword = kw;
-                return;
-            }
-
-            Value = default;
+            var v = CssParse.ParseRotate(raw);
+            if (v.keyword != StyleKeyword.Undefined) return null;
+            return $"{path} = new Rotate({v.value.angle.value.ToString(CultureInfo.InvariantCulture)}f);";
         }
 
-        /// <summary>
-        /// Converts a kebab-case CSS value (e.g. "flex-start", "space-between", "nowrap")
-        /// by removing hyphens and doing case-insensitive Enum.TryParse.
-        /// </summary>
-        private static bool TryParseEnum(string raw, out T result)
+        private static string GenerateTransformOriginCode(string raw, string path)
         {
-            if (string.IsNullOrEmpty(raw))
-            {
-                result = default;
-                return false;
-            }
-
-            var normalized = raw.Trim().Replace("-", "");
-            return Enum.TryParse(normalized, true, out result);
+            var v = CssParse.ParseTransformOrigin(raw);
+            if (v.keyword != StyleKeyword.Undefined) return null;
+            var o = v.value;
+            return $"{path} = new TransformOrigin({o.x}f, {o.y}f, {o.z}f);";
         }
 
-        public static implicit operator StyleEnum<T>(T value) => new StyleEnum<T>(value);
-        public static implicit operator StyleEnum<T>(string rawValue) => new StyleEnum<T>(rawValue);
-        public static implicit operator StyleEnum<T>(StyleKeyword keyword) => new StyleEnum<T>(keyword);
-
-        public override void ToCode(string targetVarName, StringBuilder sb)
+        private static string GenerateTextShadowCode(string raw, string path)
         {
-            if (IsKeyword) return;
-            sb.AppendLine($"{FullPath(targetVarName)} = {typeof(T).Name}.{Value};");
-        }
-    }
-
-    /// <summary>Wrapper for Translate style values.</summary>
-    public class StyleTranslate : BaseStyle
-    {
-        public Translate Value { get; set; }
-
-        public StyleTranslate() : base() { }
-        public StyleTranslate(Translate value) : base() { Value = value; RawValue = value.ToString(); }
-        public StyleTranslate(string rawValue) : base(rawValue) { }
-        public StyleTranslate(StyleKeyword keyword) : base(keyword) { }
-
-        protected override void Parse()
-        {
-            if (TryParseKeyword(RawValue, out var kw)) { Keyword = kw; return; }
-            // CSS: "10px 20px", "62% -47%", "10 20"
-            var parts = RawValue.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length < 2) return;
-
-            // Detect if any part uses %, which means Length-based Translate
-            bool hasPercent = false;
-            for (int i = 0; i < parts.Length && i < 2; i++)
-                if (parts[i].Trim().EndsWith("%")) hasPercent = true;
-
-            if (hasPercent)
-            {
-                Length x = ParseLength(parts[0]);
-                Length y = ParseLength(parts[1]);
-                Value = new Translate(x, y);
-            }
-            else
-            {
-                var nums = ParseFloats(RawValue, 2);
-                if (nums != null)
-                    Value = new Vector2(nums[0], nums[1]);
-            }
-            Keyword = StyleKeyword.Undefined;
-        }
-
-        private static Length ParseLength(string s)
-        {
-            s = s.Trim();
-            if (s.EndsWith("%"))
-            {
-                float.TryParse(s.TrimEnd('%'), NumberStyles.Float, CultureInfo.InvariantCulture, out float v);
-                return new Length(v, LengthUnit.Percent);
-            }
-            string num = StripSuffix(s, "px");
-            float.TryParse(num, NumberStyles.Float, CultureInfo.InvariantCulture, out float pv);
-            return new Length(pv, LengthUnit.Pixel);
-        }
-
-        public static implicit operator StyleTranslate(Translate value) => new StyleTranslate(value);
-        public static implicit operator StyleTranslate(string rawValue) => new StyleTranslate(rawValue);
-        public static implicit operator StyleTranslate(StyleKeyword keyword) => new StyleTranslate(keyword);
-
-        public override void ToCode(string targetVarName, StringBuilder sb)
-        {
-            if (IsKeyword) return;
-            if (Value.useLengths)
-            {
-                sb.AppendLine($"{FullPath(targetVarName)} = new Translate({LengthCode(Value.xLength)}, {LengthCode(Value.yLength)});");
-            }
-            else
-            {
-                sb.AppendLine($"{FullPath(targetVarName)} = new Translate(new Vector2({Value.value.x.ToString(CultureInfo.InvariantCulture)}f, {Value.value.y.ToString(CultureInfo.InvariantCulture)}f));");
-            }
+            var v = CssParse.ParseTextShadow(raw);
+            if (v.keyword != StyleKeyword.Undefined) return null;
+            var ts = v.value;
+            return $"{path} = new TextShadow\n{{\n    color = new Color({ts.color.r}f, {ts.color.g}f, {ts.color.b}f, {ts.color.a}f),\n    offset = new Vector2({ts.offset.x}f, {ts.offset.y}f),\n    blurRadius = {ts.blurRadius}f\n}};";
         }
 
         private static string LengthCode(Length l) =>
             l.unit == LengthUnit.Percent
                 ? $"Length.Percent({l.value.ToString(CultureInfo.InvariantCulture)}f)"
-                : $"new Length({l.value.ToString(CultureInfo.InvariantCulture)}f, LengthUnit.Pixel)";
+                : $"{l.value.ToString(CultureInfo.InvariantCulture)}f";
     }
+}
 
-    /// <summary>Wrapper for Scale style values.</summary>
-    public class StyleScale : BaseStyle
+namespace DisplayKit
+{
+    /// <summary>Copies values directly from Unity's IStyle to DisplayKit data classes.</summary>
+    public static class StyleIStyleConverter
     {
-        public Scale Value { get; set; }
-
-        public StyleScale() : base() { }
-        public StyleScale(Scale value) : base() { Value = value; RawValue = value.ToString(); }
-        public StyleScale(string rawValue) : base(rawValue) { }
-        public StyleScale(StyleKeyword keyword) : base(keyword) { }
-
-        protected override void Parse()
+        public static void Apply(UIElements.IStyle s, IDisplayStyleTarget e)
         {
-            if (TryParseKeyword(RawValue, out var kw)) { Keyword = kw; return; }
-            // CSS: "1.5" (uniform) or "1.5 1.5 1" (per-axis)
-            var nums = ParseFloats(RawValue, 1);
-            if (nums != null)
-            {
-                float x = nums[0];
-                float y = nums.Length > 1 ? nums[1] : x;
-                float z = nums.Length > 2 ? nums[2] : 1f;
-                Value = new Vector3(x, y, z);
-                Keyword = StyleKeyword.Undefined;
-            }
+            if (s == null || e == null) return;
+            ApplyFlex(s, e.Flex);
+            ApplyAlign(s, e.Align);
+            ApplySize(s, e.Size);
+            ApplyBackground(s, e.Background);
+            ApplySpacing(s, e.Spacing);
+            ApplyBorder(s, e.Border);
+            ApplyPosition(s, e.Position);
+            ApplyTransform(s, e.Transform);
+            ApplyDisplay(s, e.Display);
+            ApplyText(s, e.Text);
         }
 
-        public static implicit operator StyleScale(Scale value) => new StyleScale(value);
-        public static implicit operator StyleScale(string rawValue) => new StyleScale(rawValue);
-        public static implicit operator StyleScale(StyleKeyword keyword) => new StyleScale(keyword);
+        private static void ApplyFlex(UIElements.IStyle s, FlexData d) { if (d == null) return; d.Grow = s.flexGrow; d.Shrink = s.flexShrink; d.Basis = s.flexBasis; d.Direction = s.flexDirection; d.Wrap = s.flexWrap; }
+        private static void ApplyAlign(UIElements.IStyle s, AlignData d) { if (d == null) return; d.AlignItems = s.alignItems; d.JustifyContent = s.justifyContent; d.AlignSelf = s.alignSelf; d.AlignContent = s.alignContent; }
+        private static void ApplySize(UIElements.IStyle s, SizeData d) { if (d == null) return; d.Width = s.width; d.Height = s.height; d.MinWidth = s.minWidth; d.MinHeight = s.minHeight; d.MaxWidth = s.maxWidth; d.MaxHeight = s.maxHeight; }
+        private static void ApplyBackground(UIElements.IStyle s, BackgroundData d) { if (d == null) return; d.Color = s.backgroundColor; }
+        private static void ApplySpacing(UIElements.IStyle s, SpacingData d) { if (d == null) return; d.MarginTop = s.marginTop; d.MarginBottom = s.marginBottom; d.MarginLeft = s.marginLeft; d.MarginRight = s.marginRight; d.PaddingTop = s.paddingTop; d.PaddingBottom = s.paddingBottom; d.PaddingLeft = s.paddingLeft; d.PaddingRight = s.paddingRight; }
 
-        public override void ToCode(string targetVarName, StringBuilder sb)
+        private static void ApplyBorder(UIElements.IStyle s, BorderData d)
         {
-            if (IsKeyword) return;
-            sb.AppendLine($"{FullPath(targetVarName)} = new Scale(new Vector3({Value.value.x.ToString(CultureInfo.InvariantCulture)}f, {Value.value.y.ToString(CultureInfo.InvariantCulture)}f, {Value.value.z.ToString(CultureInfo.InvariantCulture)}f));");
-        }
-    }
-
-    /// <summary>Wrapper for Rotate style values.</summary>
-    public class StyleRotate : BaseStyle
-    {
-        public Rotate Value { get; set; }
-
-        public StyleRotate() : base() { }
-        public StyleRotate(Rotate value) : base() { Value = value; RawValue = value.ToString(); }
-        public StyleRotate(string rawValue) : base(rawValue) { }
-        public StyleRotate(StyleKeyword keyword) : base(keyword) { }
-
-        protected override void Parse()
-        {
-            if (TryParseKeyword(RawValue, out var kw)) { Keyword = kw; return; }
-            // CSS: "45deg", "0.5turn", "3.14rad", "100grad", or 3D: "x y z angle"
-            var parts = RawValue.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length == 0) return;
-
-            // Take the last part as the angle value (handles both "45deg" and "12 0 1 -15.55556grad")
-            string angleStr = parts[parts.Length - 1].Trim();
-            if (TryParseAngle(angleStr, out float angle))
-            {
-                Value = angle;
-                Keyword = StyleKeyword.Undefined;
-            }
+            if (d == null) return;
+            d.Color = s.borderTopColor; d.TopColor = s.borderTopColor; d.BottomColor = s.borderBottomColor;
+            d.LeftColor = s.borderLeftColor; d.RightColor = s.borderRightColor;
+            d.Width = s.borderTopWidth; d.TopWidth = s.borderTopWidth; d.BottomWidth = s.borderBottomWidth;
+            d.LeftWidth = s.borderLeftWidth; d.RightWidth = s.borderRightWidth;
+            d.Radius = s.borderTopLeftRadius; d.TopLeftRadius = s.borderTopLeftRadius;
+            d.TopRightRadius = s.borderTopRightRadius; d.BottomLeftRadius = s.borderBottomLeftRadius;
+            d.BottomRightRadius = s.borderBottomRightRadius;
         }
 
-        private static bool TryParseAngle(string s, out float degrees)
+        private static void ApplyPosition(UIElements.IStyle s, PositionData d) { if (d == null) return; d.Position = s.position; d.Top = s.top; d.Bottom = s.bottom; d.Left = s.left; d.Right = s.right; }
+        private static void ApplyTransform(UIElements.IStyle s, TransformData d) { if (d == null) return; d.Translate = s.translate; d.Scale = s.scale; d.Rotate = s.rotate; d.TransformOrigin = s.transformOrigin; }
+        private static void ApplyDisplay(UIElements.IStyle s, DisplayData d) { if (d == null) return; d.Display = s.display; d.Visibility = s.visibility; d.Opacity = s.opacity; d.Overflow = s.overflow; }
+
+        private static void ApplyText(UIElements.IStyle s, TextData d)
         {
-            degrees = 0f;
-            if (string.IsNullOrEmpty(s)) return false;
-
-            string lower = s.ToLowerInvariant();
-            float factor;
-            string numStr;
-
-            if (lower.EndsWith("grad"))
-            {
-                factor = 0.9f;           // 1 grad = 0.9 deg
-                numStr = lower.Substring(0, lower.Length - 4);
-            }
-            else if (lower.EndsWith("turn"))
-            {
-                factor = 360f;           // 1 turn = 360 deg
-                numStr = lower.Substring(0, lower.Length - 4);
-            }
-            else if (lower.EndsWith("rad"))
-            {
-                factor = 180f / Mathf.PI; // 1 rad = 180/π deg
-                numStr = lower.Substring(0, lower.Length - 3);
-            }
-            else if (lower.EndsWith("deg"))
-            {
-                factor = 1f;
-                numStr = lower.Substring(0, lower.Length - 3);
-            }
+            if (d == null) return;
+            d.Color = s.color; d.FontSize = s.fontSize;
+            // Unity FontStyle → our FontStyle
+            var ufs = s.unityFontStyleAndWeight;
+            if (ufs.keyword != StyleKeyword.Undefined)
+                d.FontStyle = new UIElements.StyleEnum<Enums.FontStyle>(ufs.keyword);
             else
             {
-                factor = 1f;
-                numStr = lower;
-            }
-
-            if (float.TryParse(numStr.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out float val))
-            {
-                degrees = val * factor;
-                return true;
-            }
-            return false;
-        }
-
-        public static implicit operator StyleRotate(Rotate value) => new StyleRotate(value);
-        public static implicit operator StyleRotate(string rawValue) => new StyleRotate(rawValue);
-        public static implicit operator StyleRotate(StyleKeyword keyword) => new StyleRotate(keyword);
-
-        public override void ToCode(string targetVarName, StringBuilder sb)
-        {
-            if (IsKeyword) return;
-            sb.AppendLine($"{FullPath(targetVarName)} = new Rotate({Value.angle.ToString(CultureInfo.InvariantCulture)}f);");
-        }
-    }
-
-    /// <summary>Wrapper for TransformOrigin style values.</summary>
-    public class StyleTransformOrigin : BaseStyle
-    {
-        public TransformOrigin Value { get; set; }
-
-        public StyleTransformOrigin() : base() { }
-        public StyleTransformOrigin(TransformOrigin value) : base() { Value = value; RawValue = value.ToString(); }
-        public StyleTransformOrigin(string rawValue) : base(rawValue) { }
-        public StyleTransformOrigin(StyleKeyword keyword) : base(keyword) { }
-
-        protected override void Parse()
-        {
-            if (TryParseKeyword(RawValue, out var kw)) { Keyword = kw; return; }
-            // CSS: "50 0 0", "50% 0%", "top", "top left", "center bottom", etc.
-            var parts = RawValue.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
-
-            float x = ParseOriginPart(parts, 0, 50f);
-            float y = ParseOriginPart(parts, 1, 50f);
-            float z = 0f;
-
-            // Single keyword: infer the other axis
-            if (parts.Length == 1 && TryOriginKeyword(parts[0].Trim(), out float kv, out bool isVertical))
-            {
-                if (isVertical) { x = 50f; y = kv; }
-                else { x = kv; y = 50f; } // "center" goes here too: x=50,y=50
-            }
-
-            if (parts.Length >= 3)
-            {
-                string nz = StripSuffix(StripSuffix(parts[2].Trim(), "%"), "px");
-                float.TryParse(nz, NumberStyles.Float, CultureInfo.InvariantCulture, out z);
-            }
-
-            Value = new TransformOrigin(x, y, z);
-            Keyword = StyleKeyword.Undefined;
-        }
-
-        private static float ParseOriginPart(string[] parts, int index, float fallback)
-        {
-            if (index >= parts.Length) return fallback;
-            string s = parts[index].Trim();
-            if (TryOriginKeyword(s, out float kv, out _)) return kv;
-            string num = StripSuffix(StripSuffix(s, "%"), "px");
-            return float.TryParse(num, NumberStyles.Float, CultureInfo.InvariantCulture, out float fv) ? fv : fallback;
-        }
-
-        private static bool TryOriginKeyword(string s, out float value, out bool isVertical)
-        {
-            switch (s.Trim().ToLowerInvariant())
-            {
-                case "top": value = 0f; isVertical = true; return true;
-                case "bottom": value = 100f; isVertical = true; return true;
-                case "left": value = 0f; isVertical = false; return true;
-                case "right": value = 100f; isVertical = false; return true;
-                case "center": value = 50f; isVertical = false; return true;
-                default: value = 0f; isVertical = false; return false;
-            }
-        }
-
-        public static implicit operator StyleTransformOrigin(TransformOrigin value) => new StyleTransformOrigin(value);
-        public static implicit operator StyleTransformOrigin(string rawValue) => new StyleTransformOrigin(rawValue);
-        public static implicit operator StyleTransformOrigin(StyleKeyword keyword) => new StyleTransformOrigin(keyword);
-
-        public override void ToCode(string targetVarName, StringBuilder sb)
-        {
-            if (IsKeyword) return;
-            sb.AppendLine($"{FullPath(targetVarName)} = new TransformOrigin({Value.x}f, {Value.y}f, {Value.z}f);");
-        }
-    }
-
-    /// <summary>Wrapper for TextShadow style values.</summary>
-    public class StyleTextShadow : BaseStyle
-    {
-        public TextShadow Value { get; set; }
-
-        public StyleTextShadow() : base() { }
-        public StyleTextShadow(TextShadow value) : base() { Value = value; RawValue = value.ToString(); }
-        public StyleTextShadow(string rawValue) : base(rawValue) { }
-        public StyleTextShadow(StyleKeyword keyword) : base(keyword) { }
-
-        protected override void Parse()
-        {
-            if (TryParseKeyword(RawValue, out var kw)) { Keyword = kw; return; }
-
-            // CSS text-shadow: <offset-x> <offset-y> <blur-radius>? <color>?
-            // e.g. "12px 12px 1px rgb(255, 0, 0)" or "2px 2px 4px black"
-            var parts = RawValue.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length < 2) return;
-
-            var shadow = new TextShadow { color = Color.black, offset = Vector2.zero, blurRadius = 0f };
-
-            int numIndex = 0;
-            for (int i = 0; i < parts.Length; i++)
-            {
-                string p = parts[i];
-                if (i == parts.Length - 1 || (i >= 2 && !IsNumericPart(p)))
+                var fs = ufs.value switch
                 {
-                    var sc = new StyleColor(string.Join(" ", parts, i, parts.Length - i));
-                    if (!sc.IsKeyword) shadow.color = sc.Value;
-                    break;
-                }
-                string numStr = p.EndsWith("px", StringComparison.OrdinalIgnoreCase)
-                    ? p.Substring(0, p.Length - 2) : p;
-                if (float.TryParse(numStr, NumberStyles.Float, CultureInfo.InvariantCulture, out float f))
-                {
-                    switch (numIndex)
-                    {
-                        case 0: shadow.offset.x = f; break;
-                        case 1: shadow.offset.y = f; break;
-                        case 2: shadow.blurRadius = f; break;
-                    }
-                    numIndex++;
-                }
+                    UnityEngine.FontStyle.BoldAndItalic => Enums.FontStyle.BoldItalic,
+                    UnityEngine.FontStyle.Bold => Enums.FontStyle.Bold,
+                    UnityEngine.FontStyle.Italic => Enums.FontStyle.Italic,
+                    _ => Enums.FontStyle.Normal
+                };
+                d.FontStyle = new UIElements.StyleEnum<Enums.FontStyle>(fs);
             }
-
-            Value = shadow;
-            Keyword = StyleKeyword.Undefined;
-        }
-
-        private static bool IsNumericPart(string s)
-        {
-            if (string.IsNullOrEmpty(s)) return false;
-            string num = s.EndsWith("px", StringComparison.OrdinalIgnoreCase)
-                ? s.Substring(0, s.Length - 2) : s;
-            return float.TryParse(num, NumberStyles.Float, CultureInfo.InvariantCulture, out _);
-        }
-
-        public static implicit operator StyleTextShadow(TextShadow value) => new StyleTextShadow(value);
-        public static implicit operator StyleTextShadow(string rawValue) => new StyleTextShadow(rawValue);
-        public static implicit operator StyleTextShadow(StyleKeyword keyword) => new StyleTextShadow(keyword);
-
-        public override void ToCode(string targetVarName, StringBuilder sb)
-        {
-            if (IsKeyword) return;
-            sb.AppendLine($"{FullPath(targetVarName)} = new TextShadow");
-            sb.AppendLine("{");
-            sb.AppendLine($"    color = new Color({Value.color.r}f, {Value.color.g}f, {Value.color.b}f, {Value.color.a}f),");
-            sb.AppendLine($"    offset = new Vector2({Value.offset.x}f, {Value.offset.y}f),");
-            sb.AppendLine($"    blurRadius = {Value.blurRadius}f");
-            sb.AppendLine("};");
-        }
-    }
-}
-
-// ============================================================================
-// StyleFont - Font definition parser (for -unity-font-definition)
-// ============================================================================
-
-namespace DisplayKit
-{
-    /// <summary>
-    /// Parses UXML font definition URLs into FontType.
-    /// Input: url("project://.../RobotoItalic.ttf?...#RobotoItalic")
-    /// </summary>
-    public class StyleFont : BaseStyle
-    {
-        public FontType Value { get; set; }
-
-        public StyleFont() : base() { }
-        public StyleFont(FontType value) : base() { Value = value; RawValue = value.ToString(); }
-        public StyleFont(string rawValue) : base(rawValue) { }
-        public StyleFont(StyleKeyword keyword) : base(keyword) { }
-
-        protected override void Parse()
-        {
-            if (TryParseKeyword(RawValue, out var kw)) { Keyword = kw; return; }
-
-            // Extract font name from url(".../FontName.ttf?...#FontName")
-            // Try the fragment after '#' first, then fall back to filename
-            string raw = RawValue.Trim();
-            string fontName = null;
-
-            // Try fragment after #
-            int hash = raw.LastIndexOf('#');
-            if (hash >= 0)
+            d.Wrap = s.whiteSpace; d.Overflow = s.textOverflow;
+            d.LetterSpacing = s.letterSpacing; d.WordSpacing = s.wordSpacing;
+            d.ParagraphSpacing = s.unityParagraphSpacing;
+            d.OutlineWidth = s.unityTextOutlineWidth; d.OutlineColor = s.unityTextOutlineColor;
+            d.TextShadow = s.textShadow;
+            var fd = s.unityFontDefinition;
+            if (fd.keyword == StyleKeyword.Undefined && fd.value.font != null)
             {
-                int end = raw.IndexOf(')', hash);
-                fontName = end > hash ? raw.Substring(hash + 1, end - hash - 1).Trim() : raw.Substring(hash + 1).Trim();
-            }
-            else
-            {
-                // Try extract filename before ?
-                int lastSlash = raw.LastIndexOf('/');
-                int q = raw.IndexOf('?', lastSlash > 0 ? lastSlash : 0);
-                if (lastSlash >= 0)
-                    fontName = (q > lastSlash ? raw.Substring(lastSlash + 1, q - lastSlash - 1) : raw.Substring(lastSlash + 1)).Trim();
-            }
-
-            if (!string.IsNullOrEmpty(fontName))
-            {
-                fontName = StripSuffix(StripSuffix(fontName, ".ttf"), ".otf").Trim('"', '\'', ' ', ')');
-                if (Enum.TryParse(fontName, true, out FontType ft))
-                {
-                    Value = ft;
-                    Keyword = StyleKeyword.Undefined;
-                    return;
-                }
+                string fn = fd.value.font.name;
+                System.Enum.TryParse(fn.Replace(" ", "").Replace("-", ""), true, out Enums.FontType ft);
+                d.Font = ft;
             }
         }
 
-        public static implicit operator StyleFont(string rawValue) => new StyleFont(rawValue);
-
-        public override void ToCode(string targetVarName, StringBuilder sb)
+        /// <summary>Convert Unity IStyle to raw CSS property→value dictionary (for code-gen).</summary>
+        public static Dictionary<string, string> ToDictionary(UIElements.IStyle s)
         {
-            if (IsKeyword) return;
-            sb.AppendLine($"{FullPath(targetVarName)} = FontType.{Value};");
-        }
-    }
-}
-
-// ============================================================================
-// Enums
-// ============================================================================
-
-namespace DisplayKit.Enums
-{
-    /// <summary>Flexbox layout direction.</summary>
-    public enum FlexDirection
-    {
-        Row,
-        Column,
-        RowReverse,
-        ColumnReverse
-    }
-
-    /// <summary>Flexbox wrap mode.</summary>
-    public enum Wrap
-    {
-        NoWrap,
-        Wrap
-    }
-
-    /// <summary>Cross-axis alignment for flex children.</summary>
-    public enum Align
-    {
-        FlexStart,
-        Center,
-        FlexEnd,
-        Stretch
-    }
-
-    /// <summary>Main-axis justification for flex children.</summary>
-    public enum Justify
-    {
-        FlexStart,
-        Center,
-        FlexEnd,
-        SpaceBetween,
-        SpaceAround,
-        SpaceEvenly
-    }
-
-    /// <summary>Positioning mode.</summary>
-    public enum Position
-    {
-        Relative,
-        Absolute
-    }
-
-    /// <summary>Display style mode.</summary>
-    public enum DisplayStyle
-    {
-        Flex,
-        None
-    }
-
-    /// <summary>Element visibility.</summary>
-    public enum Visibility
-    {
-        Visible,
-        Hidden
-    }
-
-    /// <summary>Overflow handling mode.</summary>
-    public enum Overflow
-    {
-        Visible,
-        Hidden,
-        Scroll
-    }
-
-    /// <summary>Font style (weight and slant).</summary>
-    public enum FontStyle
-    {
-        Normal,
-        Bold,
-        Italic,
-        BoldItalic
-    }
-
-    /// <summary>White space / text wrapping mode.</summary>
-    public enum WhiteSpace
-    {
-        Normal,
-        NoWrap,
-        Pre,
-        PreWrap
-    }
-
-    /// <summary>Text overflow handling.</summary>
-    public enum TextOverflow
-    {
-        Visible,
-        Clip,
-        Ellipsis
-    }
-
-    /// <summary>Available font families in DisplayKit.</summary>
-    public enum FontType
-    {
-        // -- Default --
-        Default,
-        LiberationSans,
-
-        // -- Roboto --
-        RobotoRegular,
-        RobotoItalic,
-        RobotoBold,
-        RobotoBoldItalic,
-        RobotoLight,
-        RobotoLightItalic,
-        RobotoMedium,
-        RobotoMediumItalic,
-        RobotoThin,
-        RobotoThinItalic,
-
-        // -- Roboto Mono --
-        RobotoMonoRegular,
-        RobotoMonoItalic,
-        RobotoMonoBold,
-        RobotoMonoBoldItalic,
-        RobotoMonoLight,
-        RobotoMonoLightItalic,
-        RobotoMonoMedium,
-        RobotoMonoMediumItalic,
-        RobotoMonoThin,
-        RobotoMonoThinItalic
-    }
-
-    /// <summary>Canvas default visibility mode.</summary>
-    public enum CanvasVisibility
-    {
-        Visible,
-        Hidden
-    }
-}
-
-// ============================================================================
-// Style Data Classes
-// ============================================================================
-
-namespace DisplayKit
-{
-    /// <summary>Controls the element's background appearance.</summary>
-    public class BackgroundData
-    {
-        /// <summary>Background color.</summary>
-        public StyleColor Color { get; set; }
-    }
-
-    /// <summary>Controls flexbox layout behavior.</summary>
-    public class FlexData
-    {
-        /// <summary>How much element grows relative to siblings.</summary>
-        public StyleFloat Grow { get; set; }
-
-        /// <summary>How much element shrinks relative to siblings.</summary>
-        public StyleFloat Shrink { get; set; }
-
-        /// <summary>Initial size before grow/shrink.</summary>
-        public StyleLength Basis { get; set; }
-
-        /// <summary>Layout direction (Row, Column, RowReverse, ColumnReverse).</summary>
-        public StyleEnum<FlexDirection> Direction { get; set; }
-
-        /// <summary>Whether items wrap to multiple lines (Wrap, NoWrap).</summary>
-        public StyleEnum<Wrap> Wrap { get; set; }
-    }
-
-    /// <summary>Controls alignment of children and self.</summary>
-    public class AlignData
-    {
-        /// <summary>Cross-axis alignment of children.</summary>
-        public StyleEnum<Align> AlignItems { get; set; }
-
-        /// <summary>Main-axis distribution of children.</summary>
-        public StyleEnum<Justify> JustifyContent { get; set; }
-
-        /// <summary>Override this element's cross-axis alignment.</summary>
-        public StyleEnum<Align> AlignSelf { get; set; }
-
-        /// <summary>Multi-line content alignment when wrapping.</summary>
-        public StyleEnum<Align> AlignContent { get; set; }
-    }
-
-    /// <summary>Controls element dimensions.</summary>
-    public class SizeData
-    {
-        /// <summary>Element width.</summary>
-        public StyleLength Width { get; set; }
-
-        /// <summary>Element height.</summary>
-        public StyleLength Height { get; set; }
-
-        /// <summary>Minimum width.</summary>
-        public StyleLength MinWidth { get; set; }
-
-        /// <summary>Minimum height.</summary>
-        public StyleLength MinHeight { get; set; }
-
-        /// <summary>Maximum width.</summary>
-        public StyleLength MaxWidth { get; set; }
-
-        /// <summary>Maximum height.</summary>
-        public StyleLength MaxHeight { get; set; }
-    }
-
-    /// <summary>Controls padding and margin.</summary>
-    public class SpacingData
-    {
-        /// <summary>Top margin.</summary>
-        public StyleLength MarginTop { get; set; }
-
-        /// <summary>Bottom margin.</summary>
-        public StyleLength MarginBottom { get; set; }
-
-        /// <summary>Left margin.</summary>
-        public StyleLength MarginLeft { get; set; }
-
-        /// <summary>Right margin.</summary>
-        public StyleLength MarginRight { get; set; }
-
-        /// <summary>Top padding.</summary>
-        public StyleLength PaddingTop { get; set; }
-
-        /// <summary>Bottom padding.</summary>
-        public StyleLength PaddingBottom { get; set; }
-
-        /// <summary>Left padding.</summary>
-        public StyleLength PaddingLeft { get; set; }
-
-        /// <summary>Right padding.</summary>
-        public StyleLength PaddingRight { get; set; }
-    }
-
-    /// <summary>Controls border appearance.</summary>
-    public class BorderData
-    {
-        /// <summary>All border colors (sets all sides).</summary>
-        public StyleColor Color { get; set; }
-
-        /// <summary>Top border color.</summary>
-        public StyleColor TopColor { get; set; }
-
-        /// <summary>Bottom border color.</summary>
-        public StyleColor BottomColor { get; set; }
-
-        /// <summary>Left border color.</summary>
-        public StyleColor LeftColor { get; set; }
-
-        /// <summary>Right border color.</summary>
-        public StyleColor RightColor { get; set; }
-
-        /// <summary>All border widths (sets all sides).</summary>
-        public StyleFloat Width { get; set; }
-
-        /// <summary>Top border width.</summary>
-        public StyleFloat TopWidth { get; set; }
-
-        /// <summary>Bottom border width.</summary>
-        public StyleFloat BottomWidth { get; set; }
-
-        /// <summary>Left border width.</summary>
-        public StyleFloat LeftWidth { get; set; }
-
-        /// <summary>Right border width.</summary>
-        public StyleFloat RightWidth { get; set; }
-
-        /// <summary>All corner radii (sets all corners).</summary>
-        public StyleLength Radius { get; set; }
-
-        /// <summary>Top-left corner radius.</summary>
-        public StyleLength TopLeftRadius { get; set; }
-
-        /// <summary>Top-right corner radius.</summary>
-        public StyleLength TopRightRadius { get; set; }
-
-        /// <summary>Bottom-left corner radius.</summary>
-        public StyleLength BottomLeftRadius { get; set; }
-
-        /// <summary>Bottom-right corner radius.</summary>
-        public StyleLength BottomRightRadius { get; set; }
-    }
-
-    /// <summary>Controls element positioning.</summary>
-    public class PositionData
-    {
-        /// <summary>Position mode (Absolute, Relative).</summary>
-        public StyleEnum<Enums.Position> Position { get; set; }
-
-        /// <summary>Top offset.</summary>
-        public StyleLength Top { get; set; }
-
-        /// <summary>Bottom offset.</summary>
-        public StyleLength Bottom { get; set; }
-
-        /// <summary>Left offset.</summary>
-        public StyleLength Left { get; set; }
-
-        /// <summary>Right offset.</summary>
-        public StyleLength Right { get; set; }
-    }
-
-    /// <summary>Controls element transformations.</summary>
-    public class TransformData
-    {
-        /// <summary>Translation offset.</summary>
-        public StyleTranslate Translate { get; set; }
-
-        /// <summary>Scale factor.</summary>
-        public StyleScale Scale { get; set; }
-
-        /// <summary>Rotation angle.</summary>
-        public StyleRotate Rotate { get; set; }
-
-        /// <summary>Transform origin point.</summary>
-        public StyleTransformOrigin TransformOrigin { get; set; }
-    }
-
-    /// <summary>Controls element visibility and rendering.</summary>
-    public class DisplayData
-    {
-        /// <summary>Display mode (Flex, None).</summary>
-        public StyleEnum<DisplayStyle> Display { get; set; }
-
-        /// <summary>Visibility (Visible, Hidden).</summary>
-        public StyleEnum<Visibility> Visibility { get; set; }
-
-        /// <summary>Opacity (0-1).</summary>
-        public StyleFloat Opacity { get; set; }
-
-        /// <summary>Overflow handling (Visible, Hidden, Scroll).</summary>
-        public StyleEnum<Overflow> Overflow { get; set; }
-    }
-
-    /// <summary>Text-specific styling (only applies to DisplayText elements).</summary>
-    public class TextData
-    {
-        /// <summary>Font family.</summary>
-        public FontType? Font { get; set; }
-
-        /// <summary>Font style (Normal, Italic, Bold, BoldItalic).</summary>
-        public StyleEnum<FontStyle> FontStyle { get; set; }
-
-        /// <summary>Font size.</summary>
-        public StyleLength FontSize { get; set; }
-
-        /// <summary>Text color.</summary>
-        public StyleColor Color { get; set; }
-
-        /// <summary>Text alignment (uses UnityEngine.TextAnchor).</summary>
-        public TextAnchor? Align { get; set; }
-
-        /// <summary>Text wrapping mode.</summary>
-        public StyleEnum<WhiteSpace> Wrap { get; set; }
-
-        /// <summary>Text overflow handling.</summary>
-        public StyleEnum<TextOverflow> Overflow { get; set; }
-
-        /// <summary>Letter spacing.</summary>
-        public StyleLength LetterSpacing { get; set; }
-
-        /// <summary>Word spacing.</summary>
-        public StyleLength WordSpacing { get; set; }
-
-        /// <summary>Paragraph spacing.</summary>
-        public StyleLength ParagraphSpacing { get; set; }
-
-        /// <summary>Text outline width.</summary>
-        public StyleFloat OutlineWidth { get; set; }
-
-        /// <summary>Text outline color.</summary>
-        public StyleColor OutlineColor { get; set; }
-
-        /// <summary>Text shadow effect.</summary>
-        public StyleTextShadow TextShadow { get; set; }
-    }
-}
-
-// ============================================================================
-// IDisplayStyleTarget - Interface for elements exposing DisplayKit data classes
-// ============================================================================
-
-namespace DisplayKit
-{
-    public interface IDisplayStyleTarget
-    {
-        BackgroundData Background { get; }
-        FlexData Flex { get; }
-        AlignData Align { get; }
-        SizeData Size { get; }
-        SpacingData Spacing { get; }
-        BorderData Border { get; }
-        PositionData Position { get; }
-        TransformData Transform { get; }
-        DisplayData Display { get; }
-        TextData Text { get; }
-    }
-}
-
-// ============================================================================
-// StyleParser - CSS string → Dictionary<string, BaseStyle>
-// ============================================================================
-
-namespace DisplayKit
-{
-    public static class StyleParser
-    {
-        private static readonly Dictionary<string, Func<string, BaseStyle>> Registry =
-            new Dictionary<string, Func<string, BaseStyle>>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["flex-grow"] = v => (StyleFloat)v,
-                ["flex-shrink"] = v => (StyleFloat)v,
-                ["flex-basis"] = v => (StyleLength)v,
-                ["flex-direction"] = v => (StyleEnum<FlexDirection>)v,
-                ["flex-wrap"] = v => (StyleEnum<Wrap>)v,
-                ["align-items"] = v => (StyleEnum<Align>)v,
-                ["justify-content"] = v => (StyleEnum<Justify>)v,
-                ["align-self"] = v => (StyleEnum<Align>)v,
-                ["align-content"] = v => (StyleEnum<Align>)v,
-                ["width"] = v => (StyleLength)v,
-                ["height"] = v => (StyleLength)v,
-                ["min-width"] = v => (StyleLength)v,
-                ["min-height"] = v => (StyleLength)v,
-                ["max-width"] = v => (StyleLength)v,
-                ["max-height"] = v => (StyleLength)v,
-                ["background-color"] = v => (StyleColor)v,
-                ["margin-top"] = v => (StyleLength)v,
-                ["margin-bottom"] = v => (StyleLength)v,
-                ["margin-left"] = v => (StyleLength)v,
-                ["margin-right"] = v => (StyleLength)v,
-                ["padding-top"] = v => (StyleLength)v,
-                ["padding-bottom"] = v => (StyleLength)v,
-                ["padding-left"] = v => (StyleLength)v,
-                ["padding-right"] = v => (StyleLength)v,
-                ["border-color"] = v => (StyleColor)v,
-                ["border-top-color"] = v => (StyleColor)v,
-                ["border-bottom-color"] = v => (StyleColor)v,
-                ["border-left-color"] = v => (StyleColor)v,
-                ["border-right-color"] = v => (StyleColor)v,
-                ["border-width"] = v => (StyleFloat)v,
-                ["border-top-width"] = v => (StyleFloat)v,
-                ["border-bottom-width"] = v => (StyleFloat)v,
-                ["border-left-width"] = v => (StyleFloat)v,
-                ["border-right-width"] = v => (StyleFloat)v,
-                ["border-radius"] = v => (StyleLength)v,
-                ["border-top-left-radius"] = v => (StyleLength)v,
-                ["border-top-right-radius"] = v => (StyleLength)v,
-                ["border-bottom-left-radius"] = v => (StyleLength)v,
-                ["border-bottom-right-radius"] = v => (StyleLength)v,
-                ["position"] = v => (StyleEnum<Enums.Position>)v,
-                ["top"] = v => (StyleLength)v,
-                ["bottom"] = v => (StyleLength)v,
-                ["left"] = v => (StyleLength)v,
-                ["right"] = v => (StyleLength)v,
-                ["translate"] = v => (StyleTranslate)v,
-                ["scale"] = v => (StyleScale)v,
-                ["rotate"] = v => (StyleRotate)v,
-                ["transform-origin"] = v => (StyleTransformOrigin)v,
-                ["display"] = v => (StyleEnum<DisplayStyle>)v,
-                ["visibility"] = v => (StyleEnum<Visibility>)v,
-                ["opacity"] = v => (StyleFloat)v,
-                ["overflow"] = v => (StyleEnum<Overflow>)v,
-                ["color"] = v => (StyleColor)v,
-                ["font-size"] = v => (StyleLength)v,
-                ["font-style"] = v => (StyleEnum<FontStyle>)v,
-                ["white-space"] = v => (StyleEnum<WhiteSpace>)v,
-                ["text-overflow"] = v => (StyleEnum<TextOverflow>)v,
-                ["letter-spacing"] = v => (StyleLength)v,
-                ["word-spacing"] = v => (StyleLength)v,
-                ["paragraph-spacing"] = v => (StyleLength)v,
-                ["outline-width"] = v => (StyleFloat)v,
-                ["outline-color"] = v => (StyleColor)v,
-                ["-unity-text-outline-width"] = v => (StyleFloat)v,
-                ["-unity-text-outline-color"] = v => (StyleColor)v,
-                ["-unity-paragraph-spacing"] = v => (StyleLength)v,
-                ["-unity-font-definition"] = v => (StyleFont)v,
-                ["text-shadow"] = v => (StyleTextShadow)v,
-            };
-
-        public static Dictionary<string, BaseStyle> Parse(string cssStyle)
-        {
-            var result = new Dictionary<string, BaseStyle>(StringComparer.OrdinalIgnoreCase);
-            if (string.IsNullOrWhiteSpace(cssStyle)) return result;
-
-            foreach (string decl in cssStyle.Split(';'))
-            {
-                string t = decl.Trim();
-                if (t.Length == 0) continue;
-                int ci = t.IndexOf(':');
-                if (ci < 0) continue;
-                string prop = t.Substring(0, ci).Trim().ToLowerInvariant();
-                string val = t.Substring(ci + 1).Trim();
-                if (prop.Length == 0 || val.Length == 0) continue;
-                if (Registry.TryGetValue(prop, out var factory))
-                {
-                    var style = factory(val);
-                    style.CssPropertyName = prop;
-                    result[prop] = style;
-                }
-            }
-            return result;
-        }
-    }
-}
-
-// ============================================================================
-// StyleMapper - Dictionary<string, BaseStyle> → DisplayKit data classes
-// ============================================================================
-
-namespace DisplayKit
-{
-    public static class StyleMapper
-    {
-        public static void Apply(Dictionary<string, BaseStyle> s, FlexData t)
-        {
-            if (t == null) return;
-            if (Try(s, "flex-grow", out StyleFloat fg)) t.Grow = fg;
-            if (Try(s, "flex-shrink", out StyleFloat fs)) t.Shrink = fs;
-            if (Try(s, "flex-basis", out StyleLength fb)) t.Basis = fb;
-            if (Try(s, "flex-direction", out StyleEnum<FlexDirection> fd)) t.Direction = fd;
-            if (Try(s, "flex-wrap", out StyleEnum<Wrap> fw)) t.Wrap = fw;
+            var d = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (s == null) return d;
+            Add(d, "flex-grow", s.flexGrow);
+            Add(d, "flex-shrink", s.flexShrink);
+            Add(d, "flex-basis", s.flexBasis);
+            Add(d, "flex-direction", s.flexDirection);
+            Add(d, "flex-wrap", s.flexWrap);
+            Add(d, "align-items", s.alignItems);
+            Add(d, "justify-content", s.justifyContent);
+            Add(d, "align-self", s.alignSelf);
+            Add(d, "align-content", s.alignContent);
+            Add(d, "width", s.width);
+            Add(d, "height", s.height);
+            Add(d, "min-width", s.minWidth);
+            Add(d, "min-height", s.minHeight);
+            Add(d, "max-width", s.maxWidth);
+            Add(d, "max-height", s.maxHeight);
+            Add(d, "background-color", s.backgroundColor);
+            Add(d, "margin-top", s.marginTop);
+            Add(d, "margin-bottom", s.marginBottom);
+            Add(d, "margin-left", s.marginLeft);
+            Add(d, "margin-right", s.marginRight);
+            Add(d, "padding-top", s.paddingTop);
+            Add(d, "padding-bottom", s.paddingBottom);
+            Add(d, "padding-left", s.paddingLeft);
+            Add(d, "padding-right", s.paddingRight);
+            Add(d, "border-top-color", s.borderTopColor);
+            Add(d, "border-bottom-color", s.borderBottomColor);
+            Add(d, "border-left-color", s.borderLeftColor);
+            Add(d, "border-right-color", s.borderRightColor);
+            Add(d, "border-top-width", s.borderTopWidth);
+            Add(d, "border-bottom-width", s.borderBottomWidth);
+            Add(d, "border-left-width", s.borderLeftWidth);
+            Add(d, "border-right-width", s.borderRightWidth);
+            Add(d, "border-top-left-radius", s.borderTopLeftRadius);
+            Add(d, "border-top-right-radius", s.borderTopRightRadius);
+            Add(d, "border-bottom-left-radius", s.borderBottomLeftRadius);
+            Add(d, "border-bottom-right-radius", s.borderBottomRightRadius);
+            Add(d, "position", s.position);
+            Add(d, "top", s.top);
+            Add(d, "bottom", s.bottom);
+            Add(d, "left", s.left);
+            Add(d, "right", s.right);
+            Add(d, "translate", s.translate);
+            Add(d, "scale", s.scale);
+            Add(d, "rotate", s.rotate);
+            Add(d, "transform-origin", s.transformOrigin);
+            Add(d, "display", s.display);
+            Add(d, "visibility", s.visibility);
+            Add(d, "opacity", s.opacity);
+            Add(d, "overflow", s.overflow);
+            Add(d, "color", s.color);
+            Add(d, "font-size", s.fontSize);
+            Add(d, "white-space", s.whiteSpace);
+            Add(d, "text-overflow", s.textOverflow);
+            Add(d, "letter-spacing", s.letterSpacing);
+            Add(d, "word-spacing", s.wordSpacing);
+            return d;
         }
 
-        public static void Apply(Dictionary<string, BaseStyle> s, AlignData t)
+        /// <summary>Read computed styles from IResolvedStyle (captures all UXML+CSS values, no keyword info).</summary>
+        public static Dictionary<string, string> ToDictionary(UIElements.IResolvedStyle rs)
         {
-            if (t == null) return;
-            if (Try(s, "align-items", out StyleEnum<Align> ai)) t.AlignItems = ai;
-            if (Try(s, "justify-content", out StyleEnum<Justify> jc)) t.JustifyContent = jc;
-            if (Try(s, "align-self", out StyleEnum<Align> af)) t.AlignSelf = af;
-            if (Try(s, "align-content", out StyleEnum<Align> ac)) t.AlignContent = ac;
+            var d = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (rs == null) return d;
+
+            // Float (from StyleFloat.value)
+            AddF(d, "flex-grow", rs.flexGrow);
+            AddF(d, "flex-shrink", rs.flexShrink);
+            AddF(d, "opacity", rs.opacity);
+
+            // Lengths (from StyleFloat.value)
+            AddF(d, "width", rs.width);
+            AddF(d, "height", rs.height);
+            AddF(d, "min-width", rs.minWidth);
+            AddF(d, "min-height", rs.minHeight);
+            AddF(d, "max-width", rs.maxWidth);
+            AddF(d, "max-height", rs.maxHeight);
+            AddF(d, "flex-basis", rs.flexBasis);
+            AddF(d, "margin-top", rs.marginTop);
+            AddF(d, "margin-bottom", rs.marginBottom);
+            AddF(d, "margin-left", rs.marginLeft);
+            AddF(d, "margin-right", rs.marginRight);
+            AddF(d, "padding-top", rs.paddingTop);
+            AddF(d, "padding-bottom", rs.paddingBottom);
+            AddF(d, "padding-left", rs.paddingLeft);
+            AddF(d, "padding-right", rs.paddingRight);
+            AddF(d, "top", rs.top);
+            AddF(d, "bottom", rs.bottom);
+            AddF(d, "left", rs.left);
+            AddF(d, "right", rs.right);
+            AddF(d, "border-top-left-radius", rs.borderTopLeftRadius);
+            AddF(d, "border-top-right-radius", rs.borderTopRightRadius);
+            AddF(d, "border-bottom-left-radius", rs.borderBottomLeftRadius);
+            AddF(d, "border-bottom-right-radius", rs.borderBottomRightRadius);
+            AddF(d, "font-size", rs.fontSize);
+            AddF(d, "letter-spacing", rs.letterSpacing);
+            AddF(d, "word-spacing", rs.wordSpacing);
+            AddF(d, "unityParagraphSpacing", rs.unityParagraphSpacing);
+            AddF(d, "border-top-width", rs.borderTopWidth);
+            AddF(d, "border-bottom-width", rs.borderBottomWidth);
+            AddF(d, "border-left-width", rs.borderLeftWidth);
+            AddF(d, "border-right-width", rs.borderRightWidth);
+
+            // Colors (from StyleColor.value)
+            AddC(d, "background-color", rs.backgroundColor);
+            AddC(d, "border-top-color", rs.borderTopColor);
+            AddC(d, "border-bottom-color", rs.borderBottomColor);
+            AddC(d, "border-left-color", rs.borderLeftColor);
+            AddC(d, "border-right-color", rs.borderRightColor);
+            AddC(d, "color", rs.color);
+
+            return d;
         }
 
-        public static void Apply(Dictionary<string, BaseStyle> s, SizeData t)
-        {
-            if (t == null) return;
-            if (Try(s, "width", out StyleLength w)) t.Width = w;
-            if (Try(s, "height", out StyleLength h)) t.Height = h;
-            if (Try(s, "min-width", out StyleLength mw)) t.MinWidth = mw;
-            if (Try(s, "min-height", out StyleLength mh)) t.MinHeight = mh;
-            if (Try(s, "max-width", out StyleLength xw)) t.MaxWidth = xw;
-            if (Try(s, "max-height", out StyleLength xh)) t.MaxHeight = xh;
-        }
+        private static void AddF(Dictionary<string, string> d, string prop, StyleFloat v)
+        { if (v.keyword == StyleKeyword.Undefined && !float.IsNaN(v.value) && v.value != 0f) d[prop] = $"{v.value.ToString(CultureInfo.InvariantCulture)}px"; }
+        private static void AddC(Dictionary<string, string> d, string prop, StyleColor v)
+        { if (v.keyword == StyleKeyword.Undefined && v.value != Color.clear && v.value.a > 0f) d[prop] = $"rgba({v.value.r * 255:F0},{v.value.g * 255:F0},{v.value.b * 255:F0},{v.value.a})"; }
 
-        public static void Apply(Dictionary<string, BaseStyle> s, BackgroundData t)
-        {
-            if (t == null) return;
-            if (Try(s, "background-color", out StyleColor c)) t.Color = c;
-        }
-
-        public static void Apply(Dictionary<string, BaseStyle> s, SpacingData t)
-        {
-            if (t == null) return;
-            if (Try(s, "margin-top", out StyleLength mt)) t.MarginTop = mt;
-            if (Try(s, "margin-bottom", out StyleLength mb)) t.MarginBottom = mb;
-            if (Try(s, "margin-left", out StyleLength ml)) t.MarginLeft = ml;
-            if (Try(s, "margin-right", out StyleLength mr)) t.MarginRight = mr;
-            if (Try(s, "padding-top", out StyleLength pt)) t.PaddingTop = pt;
-            if (Try(s, "padding-bottom", out StyleLength pb)) t.PaddingBottom = pb;
-            if (Try(s, "padding-left", out StyleLength pl)) t.PaddingLeft = pl;
-            if (Try(s, "padding-right", out StyleLength pr)) t.PaddingRight = pr;
-        }
-
-        public static void Apply(Dictionary<string, BaseStyle> s, BorderData t)
-        {
-            if (t == null) return;
-            if (Try(s, "border-color", out StyleColor c)) t.Color = c;
-            if (Try(s, "border-top-color", out StyleColor tc)) t.TopColor = tc;
-            if (Try(s, "border-bottom-color", out StyleColor bc)) t.BottomColor = bc;
-            if (Try(s, "border-left-color", out StyleColor lc)) t.LeftColor = lc;
-            if (Try(s, "border-right-color", out StyleColor rc)) t.RightColor = rc;
-            if (Try(s, "border-width", out StyleFloat w)) t.Width = w;
-            if (Try(s, "border-top-width", out StyleFloat tw)) t.TopWidth = tw;
-            if (Try(s, "border-bottom-width", out StyleFloat bw)) t.BottomWidth = bw;
-            if (Try(s, "border-left-width", out StyleFloat lw)) t.LeftWidth = lw;
-            if (Try(s, "border-right-width", out StyleFloat rw)) t.RightWidth = rw;
-            if (Try(s, "border-radius", out StyleLength r)) t.Radius = r;
-            if (Try(s, "border-top-left-radius", out StyleLength tlr)) t.TopLeftRadius = tlr;
-            if (Try(s, "border-top-right-radius", out StyleLength trr)) t.TopRightRadius = trr;
-            if (Try(s, "border-bottom-left-radius", out StyleLength blr)) t.BottomLeftRadius = blr;
-            if (Try(s, "border-bottom-right-radius", out StyleLength brr)) t.BottomRightRadius = brr;
-        }
-
-        public static void Apply(Dictionary<string, BaseStyle> s, PositionData t)
-        {
-            if (t == null) return;
-            if (Try(s, "position", out StyleEnum<Enums.Position> p)) t.Position = p;
-            if (Try(s, "top", out StyleLength tp)) t.Top = tp;
-            if (Try(s, "bottom", out StyleLength bt)) t.Bottom = bt;
-            if (Try(s, "left", out StyleLength lf)) t.Left = lf;
-            if (Try(s, "right", out StyleLength rt)) t.Right = rt;
-        }
-
-        public static void Apply(Dictionary<string, BaseStyle> s, TransformData t)
-        {
-            if (t == null) return;
-            if (Try(s, "translate", out StyleTranslate tl)) t.Translate = tl;
-            if (Try(s, "scale", out StyleScale sc)) t.Scale = sc;
-            if (Try(s, "rotate", out StyleRotate ro)) t.Rotate = ro;
-            if (Try(s, "transform-origin", out StyleTransformOrigin to)) t.TransformOrigin = to;
-        }
-
-        public static void Apply(Dictionary<string, BaseStyle> s, DisplayData t)
-        {
-            if (t == null) return;
-            if (Try(s, "display", out StyleEnum<DisplayStyle> d)) t.Display = d;
-            if (Try(s, "visibility", out StyleEnum<Visibility> v)) t.Visibility = v;
-            if (Try(s, "opacity", out StyleFloat o)) t.Opacity = o;
-            if (Try(s, "overflow", out StyleEnum<Overflow> ov)) t.Overflow = ov;
-        }
-
-        public static void Apply(Dictionary<string, BaseStyle> s, TextData t)
-        {
-            if (t == null) return;
-            if (Try(s, "color", out StyleColor c)) t.Color = c;
-            if (Try(s, "font-size", out StyleLength fs)) t.FontSize = fs;
-            if (Try(s, "font-style", out StyleEnum<FontStyle> fst)) t.FontStyle = fst;
-            if (Try(s, "white-space", out StyleEnum<WhiteSpace> ws)) t.Wrap = ws;
-            if (Try(s, "text-overflow", out StyleEnum<TextOverflow> to)) t.Overflow = to;
-            if (Try(s, "letter-spacing", out StyleLength ls)) t.LetterSpacing = ls;
-            if (Try(s, "word-spacing", out StyleLength wos)) t.WordSpacing = wos;
-            if (Try(s, "paragraph-spacing", out StyleLength ps)) t.ParagraphSpacing = ps;
-            if (Try(s, "outline-width", out StyleFloat ow)) t.OutlineWidth = ow;
-            if (Try(s, "outline-color", out StyleColor oc)) t.OutlineColor = oc;
-            if (Try(s, "-unity-text-outline-width", out StyleFloat uow)) t.OutlineWidth = uow;
-            if (Try(s, "-unity-text-outline-color", out StyleColor uoc)) t.OutlineColor = uoc;
-            if (Try(s, "-unity-paragraph-spacing", out StyleLength ups)) t.ParagraphSpacing = ups;
-            if (Try(s, "-unity-font-definition", out StyleFont sf)) t.Font = sf.Value;
-            if (Try(s, "text-shadow", out StyleTextShadow ts)) t.TextShadow = ts;
-        }
-
-        /// <summary>Apply all matching styles to every data class of the element.</summary>
-        public static void ApplyAll(Dictionary<string, BaseStyle> styles, IDisplayStyleTarget element)
-        {
-            if (element == null || styles == null || styles.Count == 0) return;
-            Apply(styles, element.Flex);
-            Apply(styles, element.Align);
-            Apply(styles, element.Size);
-            Apply(styles, element.Background);
-            Apply(styles, element.Spacing);
-            Apply(styles, element.Border);
-            Apply(styles, element.Position);
-            Apply(styles, element.Transform);
-            Apply(styles, element.Display);
-            Apply(styles, element.Text);
-        }
-
-        /// <summary>One-liner: parse CSS string and apply to element directly.</summary>
-        public static void ParseAndApply(string cssStyle, IDisplayStyleTarget element)
-        {
-            ApplyAll(StyleParser.Parse(cssStyle), element);
-        }
-
-        private static bool Try<T>(Dictionary<string, BaseStyle> styles, string property, out T result) where T : BaseStyle
-        {
-            if (styles.TryGetValue(property, out var bs) && bs is T typed)
-            {
-                result = typed;
-                return true;
-            }
-            result = null;
-            return false;
-        }
+        private static void Add(Dictionary<string, string> d, string prop, StyleFloat v)
+        { if (v.keyword == StyleKeyword.Undefined) d[prop] = v.value.ToString(CultureInfo.InvariantCulture); }
+        private static void Add(Dictionary<string, string> d, string prop, StyleLength v)
+        { if (v.keyword == StyleKeyword.Undefined) d[prop] = v.value.ToString(); }
+        private static void Add(Dictionary<string, string> d, string prop, StyleColor v)
+        { if (v.keyword == StyleKeyword.Undefined) d[prop] = $"rgba({v.value.r * 255:F0},{v.value.g * 255:F0},{v.value.b * 255:F0},{v.value.a})"; }
+        private static void Add<T>(Dictionary<string, string> d, string prop, UIElements.StyleEnum<T> v) where T : struct, System.Enum
+        { if (v.keyword == StyleKeyword.Undefined) d[prop] = v.value.ToString(); }
+        private static void Add(Dictionary<string, string> d, string prop, StyleTranslate v)
+        { if (v.keyword == StyleKeyword.Undefined) d[prop] = v.value.ToString(); }
+        private static void Add(Dictionary<string, string> d, string prop, StyleScale v)
+        { if (v.keyword == StyleKeyword.Undefined) d[prop] = v.value.value.ToString(); }
+        private static void Add(Dictionary<string, string> d, string prop, StyleRotate v)
+        { if (v.keyword == StyleKeyword.Undefined) d[prop] = $"{v.value.angle.value}deg"; }
+        private static void Add(Dictionary<string, string> d, string prop, StyleTransformOrigin v)
+        { if (v.keyword == StyleKeyword.Undefined) d[prop] = $"{v.value.x} {v.value.y} {v.value.z}"; }
+        private static void Add(Dictionary<string, string> d, string prop, StyleTextShadow v)
+        { if (v.keyword == StyleKeyword.Undefined) d[prop] = $"{v.value.offset.x}px {v.value.offset.y}px {v.value.blurRadius}px rgba({v.value.color.r * 255:F0},{v.value.color.g * 255:F0},{v.value.color.b * 255:F0},{v.value.color.a})"; }
     }
 }

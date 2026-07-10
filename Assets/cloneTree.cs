@@ -10,7 +10,7 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 
-public class UxmlToCodeWindow : EditorWindow
+public class CloneTreeToCodeWindow : EditorWindow
 {
     VisualTreeAsset asset;
     static int RootCanvasID = 0;
@@ -21,6 +21,7 @@ public class UxmlToCodeWindow : EditorWindow
     Vector2 _log_scroll;
     string _output = string.Empty;
     string _log = string.Empty;
+    string rootVarname = "canvas";
     private Vector2 _tscroll;
 
     public class ParseContext
@@ -48,18 +49,16 @@ public class UxmlToCodeWindow : EditorWindow
         }
     }
 
-    [MenuItem("UXML To Code/UXML To Code")]
+    [MenuItem("UXML To Code/Tree To Code(obsolete)")]
     public static void OpenWindow()
     {
-        var w = GetWindow<UxmlToCodeWindow>("UXML To Code");
+        var w = GetWindow<CloneTreeToCodeWindow>("Tree To Code");
         w.minSize = new Vector2(600, 400);
     }
 
     void OnGUI()
     {
-        EditorGUILayout.LabelField("UXML -> Code", EditorStyles.boldLabel);
-        EditorGUILayout.Space();
-        EditorGUILayout.LabelField("Warning! dont use USS!Only extract the data in ui editor", EditorStyles.boldLabel);
+        EditorGUILayout.LabelField("UXML -> Code,obsolete because there is noway to get original sytle data", EditorStyles.boldLabel);
         EditorGUILayout.Space();
 
         asset = (VisualTreeAsset)EditorGUILayout.ObjectField("VisualTreeAsset", asset, typeof(VisualTreeAsset), false);
@@ -109,59 +108,42 @@ public class UxmlToCodeWindow : EditorWindow
         Node.templateToPath.Clear();
         var codesb = new StringBuilder();
         var logsb = new StringBuilder();
-        var path = AssetDatabase.GetAssetPath(asset);
         var context = new ParseContext(RootCanvasID, AlwaysAppendIdOnName, WritePath, logsb);
-        try
-        {
-            var error = StartProcess(path, codesb, context, template: false, parent: null);
-            if (error > 0)
-            {
-                EditorUtility.DisplayDialog("Error", $"Has happend: {error} error(s),Please check log", "OK");
-            }
-        }
-        catch (Exception ex) {
-            Debug.LogError(ex);
-        }
+        if (string.IsNullOrEmpty(rootVarname)) rootVarname = "canvas";
+        var root = new Node() { id = context.NextID(), _name = rootVarname, type = NodeType.UXML };
+        var tempRoot = new VisualElement();
+        tempRoot.style.display = DisplayStyle.None;
+        rootVisualElement.Add(tempRoot);
 
-        _log = logsb.ToString();
-        _output = codesb.ToString();
+        asset.CloneTree(tempRoot);
+
+        EditorApplication.delayCall += () =>
+        {
+            try
+            {
+                var error = StartProcess(tempRoot, codesb, context, parent: root);
+                if (error > 0)
+                {
+                    EditorUtility.DisplayDialog("Error", $"Has happend: {error} error(s),Please check log", "OK");
+                }
+
+                _log = logsb.ToString();
+                _output = codesb.ToString();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError(ex);
+            }
+        };
+
+
+
     }
 
-    public static int StartProcess(string path, StringBuilder codesb, ParseContext context, bool template, Node parent,string varname = "", int baseIndent = 0)
+    public static int StartProcess(VisualElement path, StringBuilder codesb, ParseContext context, Node parent, string varname = "", int baseIndent = 0)
     {
-        if (string.IsNullOrEmpty(path) || !File.Exists(path))
-        {
-            context.Log?.AppendLine($"Error: Couldn't find asset file for VisualTreeAsset. Asset path:{path}");
-            context.ErrorCount++;
-            return context.ErrorCount;
-        }
-
-        string uxmlText;
-        try
-        {
-            uxmlText = File.ReadAllText(path);
-        }
-        catch (Exception ex)
-        {
-            context.Log?.AppendLine($"Error: Failed to read asset file: {ex.Message}");
-            context.ErrorCount++;
-            return context.ErrorCount;
-        }
-
-        var reader = new XmlDocument();
-        try
-        {
-            reader.LoadXml(uxmlText);
-        }
-        catch (Exception ex)
-        {
-            context.Log?.AppendLine($"Error: Failed to parse UXML: {ex.Message}");
-            context.ErrorCount++;
-            return context.ErrorCount;
-        }
-
-        var parser = new UxmlParser(context, template, parent);
-        parser.Parse(reader, varname);
+        var parser = new UxmlParser(context, parent);
+        parser.Parse(path, varname);
         Node firstRealNode = parser.Nodes.FirstOrDefault(n => n.type != NodeType.Message);
         foreach (var item in parser.Nodes)
         {
@@ -183,35 +165,28 @@ public class UxmlToCodeWindow : EditorWindow
     class UxmlParser
     {
         ParseContext _context;
-        bool _isTemplate;
         Node _parentNode;
         public List<Node> Nodes { get; } = new List<Node>();
 
-        public UxmlParser(ParseContext context, bool isTemplate, Node parent)
+        public UxmlParser(ParseContext context, Node parent)
         {
             _context = context;
-            _isTemplate = isTemplate;
             _parentNode = parent;
+            Nodes.Add(parent);
         }
         void Log(string msg)
         {
             _context.Log?.AppendLine(msg);
         }
 
-        public void Parse(XmlDocument reader,string rootVarname)
+        public void Parse(VisualElement reader, string rootVarname)
         {
-            PrintNodes(_parentNode, reader.ChildNodes, rootVarname);
+            PrintNodes(_parentNode, reader, rootVarname);
+
         }
 
-        void PrintNodes(Node parent, XmlNodeList nodes, string rootVarname)
+        void PrintNodes(Node parent, VisualElement nodes, string rootVarname)
         {
-            if (_isTemplate && parent == null)
-            {
-                Log("illegal args! template=true parent=null! override template to false!");
-                _context.ErrorCount++;
-                _isTemplate = false;
-            }
-
             Log($"--- Starting Proccess node, parent.id:{parent?.id} ---");
             if (parent != null)
             {
@@ -238,118 +213,66 @@ public class UxmlToCodeWindow : EditorWindow
             }
             else
             {
-                Log("parent:null due this is Root");
+                Log($"parent:null name:{nodes.name} gusss this is Root");
             }
 
             int childIndex = 1;
-            foreach (XmlNode node in nodes)
+            foreach (var nodeRaw in nodes.Children())
             {
-                if (node is XmlElement element)
+                var node = nodeRaw;
+                if (node != null)
                 {
-                    Log($"    Node Name: {node.Name} Type: {node.NodeType} Value: {node.Value} {node.InnerText}");
-                    var parts = node.Name.Split(":");
-                    if (parts.Length > 1)
+                    Log($"    Node Name: {node.name} Type: {node.GetType()}");
+                    NodeType t = NodeType.Message;
+
+                    if (node is Label)
                     {
-                        Log($"        UI Type: {parts[0]} Element Type: {parts[1]}");
-                        NodeType t;
+                        t = NodeType.Label;
+                    }
+                    else if (node is TemplateContainer T)
+                    {
+                        t = NodeType.VisualElement;
+                        node = T.contentContainer;
+                    }
+                    else if (node.GetType() == typeof(VisualElement))
+                    {
+                        t = NodeType.VisualElement;
+                    }
+
+
+                    {
+                        Log($"        UI Type: {t}");
                         try
                         {
-                            t = Enum.Parse<NodeType>(parts[1], true);
+                            if (t == NodeType.Message) throw new ArgumentException($"t is Message!");
                         }
                         catch (ArgumentException e)
                         {
                             _context.ErrorCount++;
-                            Log($"Error! {e.Message} --- \"{parts[1]}\" failed to convert! Replaced with VisualElement!");
+                            Log($"Error! {e.Message} --- {node.GetType()} failed to convert! Replaced with VisualElement!");
                             var mn = new Node()
                             {
                                 type = NodeType.Message,
-                                message = $"Error! {e.Message} --- \"{parts[1]}\" failed to convert! Replaced with VisualElement!",
+                                message = $"Error! {e.Message} --- {node.GetType()} failed to convert! Replaced with VisualElement!",
                             };
                             Nodes.Add(mn);
                             t = NodeType.VisualElement;
-                        }
-                        if (t == NodeType.Template)
-                        {
-                            Log($"    trying to resolve template...");
-                            string src = null, name = null;
-                            foreach (XmlAttribute attr in element.Attributes)
-                            {
-                                Log($"        Attribute: {attr.Name} Value: {attr.Value}");
-                                if (attr.Name == "src") src = attr.Value;
-                                if (attr.Name == "name") name = attr.Value;
-                            }
-                            if (!string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(src))
-                            {
-                                var templatePath = ConvertProjectUrlToAbsolutePath(src);
-                                Node.templateToPath[name] = templatePath;
-                                Log($"    --- Done! {name}->{templatePath}---");
-                            }
-                            else
-                            {
-                                _context.ErrorCount++;
-                                Log($"Error! Failed to resolve Template due name or src not set, name:{name} src:{src}");
-                                var mn = new Node()
-                                {
-                                    type = NodeType.Message,
-                                    message = $"Error! Failed to resolve Template due name or src not set, name:{name} src:{src}",
-                                };
-                                Nodes.Add(mn);
-                            }
-                            continue;
                         }
                         bool hasName = false;
                         var n = new Node();
                         int id = _context.NextID();
                         n.id = id;
-                        bool istemplateRoot = false;
-                        if (_isTemplate && t == NodeType.UXML)
-                        {
-                            Log($"        In template! Override UXML to VisualElement!");
-                            t = NodeType.VisualElement;
-                            istemplateRoot = true;
-                        }
                         n.type = t;
                         n.parent = parent;
                         n.indexInParent = childIndex++;
-                        n.EndOfTemplate = null;
-
-                        foreach (XmlAttribute attr in element.Attributes)
+                        string rawName = node.name;
+                        string finalName = GenerateUniqueName(rawName, id, out _);
+                        n.SetName(finalName);
+                        if (node is Label label)
                         {
-                            Log($"        Attribute: {attr.Name} Value: {attr.Value}");
-                            switch (attr.Name)
-                            {
-                                case "name":
-                                    string rawName = attr.Value;
-                                    string finalName = GenerateUniqueName(rawName, id, out _);
-                                    if (_isTemplate && istemplateRoot) finalName = rootVarname;
-                                    n.SetName(finalName);
-                                    hasName = true;
-                                    break;
-                                case "text":
-                                    n.text = attr.Value;
-                                    break;
-                                case "style":
-                                    n.styles = StyleParser.Parse(attr.Value);
-                                    break;
-                                case "template":
-                                    n.template = attr.Value;
-                                    break;
-                                default:
-                                    break;
-                            }
+                            n.text = label.text;
                         }
-
-                        if (!hasName)
-                        {
-                            string autoName = GenerateUniqueName(t.ToString(), id, out _);
-                            if(istemplateRoot == true) autoName = rootVarname;
-                            n.SetName(autoName);
-                        }
-                        if (t == NodeType.UXML)
-                        {
-                            string canvasName = GenerateUniqueName("canvas", id, out _);
-                            n.SetName(canvasName);
-                        }
+                        n.styles = StyleIStyleConverter.ToDictionary(node.style);
                         if (_context.WritePath)
                         {
                             List<Node> pathNodes = new List<Node>();
@@ -372,11 +295,10 @@ public class UxmlToCodeWindow : EditorWindow
 
                         Nodes.Add(n);
 
-                        if (element.HasChildNodes)
+                        if (node.childCount > 0)
                         {
                             Log("");
-                            PrintNodes(n, element.ChildNodes,"");
-                            Nodes.Last().EndOfTemplate = n;
+                            PrintNodes(n, node, "");
                         }
                     }
                 }
@@ -468,10 +390,9 @@ public class UxmlToCodeWindow : EditorWindow
         public Node parent;
         public int indexInParent = 0;
         public string _name;
-        public Node EndOfTemplate;
         public int GetDepth()
         {
-            int depth = -1;
+            int depth = 0;
             Node current = this;
             while (current.parent != null)
             {
@@ -489,9 +410,7 @@ public class UxmlToCodeWindow : EditorWindow
         {
             if (string.IsNullOrEmpty(_name))
             {
-                
-                    var newName = $"{type}_{id}";
-                
+                var newName = $"{type}_{id}";
                 log?.AppendLine($"_name = null! type:{type} id:{id} setting _name to {newName}");
                 _name = newName;
             }
@@ -501,7 +420,7 @@ public class UxmlToCodeWindow : EditorWindow
         public void SetName(string value) => _name = value;
         public int ToCode(StringBuilder sb, ParseContext context, int indentLevel = -1)
         {
-            //if (indentLevel < 0)
+            if (indentLevel < 0)
                 indentLevel = GetDepth();
 
             int errors = 0;
@@ -535,40 +454,29 @@ public class UxmlToCodeWindow : EditorWindow
                     sb.AppendLine(prefix + $"// start define of {varName}");
                     sb.AppendLine(prefix + $"DisplayCanvas {varName} = DisplayCanvas.Create();");
                     break;
-                case NodeType.Instance:
+                //case NodeType.Instance:
+                //    sb.AppendLine(prefix + $"// template start of {varName}");
+                //    sb.AppendLine(prefix + "{");
+                //    context?.Log?.AppendLine("Template Proceed start, try to get path...");
+                //    if (templateToPath.TryGetValue(template, out var path))
+                //    {
+                //        StartProcess(path, sb, context, true, this.parent, varName, baseIndent: indentLevel + 1);
+                //    }
+                //    else
+                //    {
+                //        context?.Log?.AppendLine($"Error: Failed to get path for template '{template}', ignoring this Instance!");
+                //        errors++;
+                //    }
+                //    sb.AppendLine();
+                //    sb.AppendLine(prefix + $"// Apply styles for {varName}");
+                //    if (styles != null)
+                //    {
+                //            StyleCodeGen.WriteAssignments(styles, varName, sb);
 
-                    sb.AppendLine(prefix + $"// template start of {varName}");
-                    sb.AppendLine(prefix + "{");
-                    sb.AppendLine();
-                    context?.Log?.AppendLine("Template Proceed start, try to get path...");
-                    if (templateToPath.TryGetValue(template, out var path))
-                    {
-                        StartProcess(path, sb, context, true, this.parent, varName, baseIndent: indentLevel + 1);
-                    }
-                    else
-                    {
-                        context?.Log?.AppendLine($"Error: Failed to get path for template '{template}', ignoring this Instance!");
-                        errors++;
-                    }
-                    prefix = Indent(indentLevel+1);
-                    sb.AppendLine();
-                    sb.AppendLine(prefix + $"// Apply styles for {varName}");
-                    if (styles != null)
-                    {
-                        if (styles != null)
-                        {
-                            StyleCodeGen.WriteAssignments(styles, varName, sb,prefix);
-                        }
-                    }
-                    prefix = Indent(indentLevel);
-                    sb.AppendLine();
-                    if (EndOfTemplate != null)
-                    {
-                        sb.AppendLine();
-                        sb.AppendLine(prefix + $"// end of template {EndOfTemplate.GetName()}(id:{EndOfTemplate.id})");
-                        sb.AppendLine(prefix + "}");
-                    }
-                    return errors;
+                //    }
+                //    sb.AppendLine(prefix + "}");
+                //    sb.AppendLine();
+                //    return errors;
                 default:
                     break;
             }
@@ -580,15 +488,7 @@ public class UxmlToCodeWindow : EditorWindow
                     StyleCodeGen.WriteAssignments(styles, varName, sb,prefix);
                 }
             }
-                    sb.AppendLine();
-            if (EndOfTemplate != null)
-            {
-
-                sb.AppendLine();
-                sb.AppendLine(prefix + $"// end of template {EndOfTemplate.GetName()}(id:{EndOfTemplate.id})");
-
-                sb.AppendLine(prefix + "}");
-            }
+            sb.AppendLine();
             return errors;
         }
     }

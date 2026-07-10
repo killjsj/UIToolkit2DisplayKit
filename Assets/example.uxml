@@ -10,9 +10,14 @@
             <ui:VisualElement name="Block" style="background-color: rgb(255, 255, 255); top: 20%; bottom: auto; height: 30%; width: 35%; flex-grow: 0.1; border-top-left-radius: 41px; border-top-right-radius: 41px; border-bottom-right-radius: 41px; border-bottom-left-radius: 41px; border-top-width: 10px; border-right-width: 10px; border-bottom-width: 10px; border-left-width: 10px; border-left-color: rgb(255, 0, 0); border-right-color: rgb(141, 252, 131); border-top-color: rgb(0, 255, 233); border-bottom-color: rgb(150, 70, 170);"/>
         </ui:VisualElement>
     </ui:VisualElement>
+    <ui:Instance template="example 1" name="testTemplate" style="align-items: flex-start; flex-direction: column-reverse;">
+        <ui:VisualElement name="Main23" style="flex-grow: 1; opacity: 0.57; display: flex; visibility: visible; overflow: visible; rotate: 0 0 0 99deg; transform-origin: top; translate: 62% 13%; scale: 2 2 2;">
+            <ui:Label text="123" style="color: rgb(255, 0, 0); -unity-text-outline-width: 1px; -unity-text-outline-color: rgb(0, 255, 22); font-size: 45px; text-shadow: 2px 2px 2px rgb(194, 51, 51); letter-spacing: 12px; word-spacing: 23px; -unity-paragraph-spacing: 12px; -unity-text-auto-size: none; rotate: 10deg; translate: 0% 254%; -unity-font-definition: url(&quot;project://database/Assets/Fonts/LiberationSans.ttf?fileID=12800000&amp;guid=36239efaf3d4f7a4abcf02b96f0fd7ec&amp;type=3#LiberationSans&quot;);"/>
+            <ui:Label text="Label"/>
+        </ui:VisualElement>
+    </ui:Instance>
     <ui:VisualElement name="Main2" style="flex-grow: 1; opacity: 0.57; display: flex; visibility: visible; overflow: visible; rotate: 0 0 0 99deg; transform-origin: top; translate: 62% 13%; scale: 2 2 2;">
         <ui:Label text="123" style="color: rgb(255, 0, 0); -unity-text-outline-width: 1px; -unity-text-outline-color: rgb(0, 255, 22); font-size: 45px; text-shadow: 2px 2px 2px rgb(194, 51, 51); letter-spacing: 12px; word-spacing: 23px; -unity-paragraph-spacing: 12px; -unity-text-auto-size: none; rotate: 10deg; translate: 0% 254%; -unity-font-definition: url(&quot;project://database/Assets/Fonts/LiberationSans.ttf?fileID=12800000&amp;guid=36239efaf3d4f7a4abcf02b96f0fd7ec&amp;type=3#LiberationSans&quot;);"/>
         <ui:Label text="Label"/>
     </ui:VisualElement>
-    <ui:Instance template="example 1" name="TemplateContainer" style="align-items: flex-start; flex-direction: column-reverse;"/>
 </ui:UXML>
