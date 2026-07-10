@@ -5,7 +5,6 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Xml;
-using Unity.VisualScripting;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -39,7 +38,7 @@ public class UxmlToCodeWindow : EditorWindow
         public string BeforeCode;
         public string AfterCode;
         public bool CustomCodeIncludeCanvas = true;
-        public ParseContext(int startID, bool alwaysAppendId, bool writePath, StringBuilder log,string beforeCode,string afterCode,bool customCodeIncludeCanvas)
+        public ParseContext(int startID, bool alwaysAppendId, bool writePath, StringBuilder log, string beforeCode, string afterCode, bool customCodeIncludeCanvas)
         {
             this.startID = startID;
             CurrentID = startID - 1;
@@ -133,24 +132,25 @@ public class UxmlToCodeWindow : EditorWindow
         var codesb = new StringBuilder();
         var logsb = new StringBuilder();
         var path = AssetDatabase.GetAssetPath(asset);
-        var context = new ParseContext(RootCanvasID, AlwaysAppendIdOnName, WritePath, logsb,before,after, CustomCodeIncludeCanvas);
+        var context = new ParseContext(RootCanvasID, AlwaysAppendIdOnName, WritePath, logsb, before, after, CustomCodeIncludeCanvas);
         try
         {
-            var error = StartProcess(path, codesb, context, template: false, parent: null);
+            var error = StartProcess(path, codesb, ref context, template: false, parent: null);
+            Debug.LogError("Error count: " + error);
             if (error > 0)
             {
                 EditorUtility.DisplayDialog("Error", $"Has happend: {error} error(s),Please check log", "OK");
             }
         }
-        catch (Exception ex) {
+        catch (Exception ex)
+        {
             Debug.LogError(ex);
             logsb.AppendLine($"An Error has be catched! Exception ex:{ex}");
         }
-
         // apply replacements defined in UI (each line: old=>new)
         if (!string.IsNullOrEmpty(replacements))
         {
-            foreach (var line in replacements.Split(new[] {'\r','\n'}, StringSplitOptions.RemoveEmptyEntries))
+            foreach (var line in replacements.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
             {
                 var idx = line.IndexOf("=>");
                 if (idx <= 0) continue;
@@ -166,7 +166,7 @@ public class UxmlToCodeWindow : EditorWindow
         _output = codesb.ToString();
     }
 
-    public static int StartProcess(string path, StringBuilder codesb, ParseContext context, bool template, Node parent,string varname = "", int baseIndent = 0)
+    public static int StartProcess(string path, StringBuilder codesb, ref ParseContext context, bool template, Node parent, string varname = "", int baseIndent = 0)
     {
         if (string.IsNullOrEmpty(path) || !File.Exists(path))
         {
@@ -204,7 +204,8 @@ public class UxmlToCodeWindow : EditorWindow
         Node firstRealNode = parser.Nodes.FirstOrDefault(n => n.type != NodeType.Message);
         foreach (var item in parser.Nodes)
         {
-            context.ErrorCount += item.ToCode(codesb, context, baseIndent);
+            var i = item.ToCode(codesb, ref context, baseIndent);
+            context.ErrorCount += i;
         }
         codesb.Replace("new Color(1f, 0f, 0f, 1f)", "Color.red");
         codesb.Replace("new Color(0f, 0f, 0f, 1f)", "Color.black");
@@ -213,6 +214,7 @@ public class UxmlToCodeWindow : EditorWindow
         codesb.Replace("new Color(0f, 0f, 0f, 0f)", "Color.clear");
         codesb.Replace("new Color(0f, 1f, 1f, 1f)", "Color.cyan");
         codesb.Replace("new Color(1f, 1f, 1f, 1f)", "Color.white");
+        Debug.LogWarning($"context.ErrorCount:{context.ErrorCount}");
 
         return context.ErrorCount;
     }
@@ -235,7 +237,7 @@ public class UxmlToCodeWindow : EditorWindow
             _context.Log?.AppendLine(msg);
         }
 
-        public void Parse(XmlDocument reader,string rootVarname)
+        public void Parse(XmlDocument reader, string rootVarname)
         {
             PrintNodes(_parentNode, reader.ChildNodes, rootVarname);
         }
@@ -296,6 +298,8 @@ public class UxmlToCodeWindow : EditorWindow
                         catch (ArgumentException e)
                         {
                             _context.ErrorCount++;
+                            Debug.LogWarning($"_context.ErrorCount:{_context.ErrorCount}");
+
                             Log($"Error! {e.Message} --- \"{parts[1]}\" failed to convert! Replaced with VisualElement!");
                             var mn = new Node()
                             {
@@ -379,7 +383,7 @@ public class UxmlToCodeWindow : EditorWindow
                         if (!hasName)
                         {
                             string autoName = GenerateUniqueName(t.ToString(), id, out _);
-                            if(istemplateRoot == true) autoName = rootVarname;
+                            if (istemplateRoot == true) autoName = rootVarname;
                             n.SetName(autoName);
                         }
                         if (t == NodeType.UXML)
@@ -412,7 +416,7 @@ public class UxmlToCodeWindow : EditorWindow
                         if (element.HasChildNodes)
                         {
                             Log("");
-                            PrintNodes(n, element.ChildNodes,"");
+                            PrintNodes(n, element.ChildNodes, "");
                             if (n.type == NodeType.Instance) Nodes.Last(x => x.type != NodeType.Message).EndOfTemplate = n;
 
                         }
@@ -532,9 +536,9 @@ public class UxmlToCodeWindow : EditorWindow
         {
             if (string.IsNullOrEmpty(_name))
             {
-                
-                    var newName = $"{type}_{id}";
-                
+
+                var newName = $"{type}_{id}";
+
                 log?.AppendLine($"_name = null! type:{type} id:{id} setting _name to {newName}");
                 _name = newName;
             }
@@ -542,19 +546,19 @@ public class UxmlToCodeWindow : EditorWindow
         }
 
         public void SetName(string value) => _name = value;
-        public int ToCode(StringBuilder sb, ParseContext context, int indentLevel = -1)
+        public int ToCode(StringBuilder sb, ref ParseContext context, int indentLevel = -1)
         {
             //if (indentLevel < 0)
-                indentLevel = GetDepth();
+            indentLevel = GetDepth();
 
             int errors = 0;
             var varName = GetName(context?.Log);
             string prefix = Indent(indentLevel);
-            
+
             if (!string.IsNullOrEmpty(message))
             {
                 sb.AppendLine(prefix + "/*");
-                        sb.AppendLine(prefix + message);
+                sb.AppendLine(prefix + message);
                 sb.AppendLine(prefix + "*/");
             }
 
@@ -564,9 +568,9 @@ public class UxmlToCodeWindow : EditorWindow
                 return 0;
             }
 
-            var be = context.BeforeCode.Replace("${name}",varName);
+            var be = context.BeforeCode.Replace("${name}", varName);
             var af = context.AfterCode.Replace("${name}", varName);
-            if(type == NodeType.UXML && context.CustomCodeIncludeCanvas)
+            if (type == NodeType.UXML && context.CustomCodeIncludeCanvas)
             {
                 be = af = "";
             }
@@ -599,21 +603,23 @@ public class UxmlToCodeWindow : EditorWindow
                     context?.Log?.AppendLine("Template Proceed start, try to get path...");
                     if (templateToPath.TryGetValue(template, out var path))
                     {
-                        StartProcess(path, sb, context, true, this.parent, varName, baseIndent: indentLevel + 1);
+                        Debug.LogWarning($"ret:NaN,context.ErrorCount:{context.ErrorCount}");
+                        var ret = StartProcess(path, sb,ref context, true, this.parent, varName, baseIndent: indentLevel + 1);
+                        Debug.LogWarning($"ret:{ret},context.ErrorCount:{context.ErrorCount}");
                     }
                     else
                     {
                         context?.Log?.AppendLine($"Error: Failed to get path for template '{template}', ignoring this Instance!");
                         errors++;
                     }
-                    prefix = Indent(indentLevel+1);
+                    prefix = Indent(indentLevel + 1);
                     sb.AppendLine();
                     sb.AppendLine(prefix + $"// Apply styles for {varName}");
                     if (styles != null)
                     {
                         if (styles != null)
                         {
-                            StyleCodeGen.WriteAssignments(styles, varName, sb,prefix);
+                            StyleCodeGen.WriteAssignments(styles, varName, sb, prefix);
                         }
                     }
                     prefix = Indent(indentLevel);
@@ -633,13 +639,13 @@ public class UxmlToCodeWindow : EditorWindow
                 if (styles != null)
                 {
                     context.Log.AppendLine($"{GetName()}: {styles.Count} styles");
-                    StyleCodeGen.WriteAssignments(styles, varName, sb,prefix);
+                    StyleCodeGen.WriteAssignments(styles, varName, sb, prefix);
                 }
             }
             if (!string.IsNullOrEmpty(af))
             {
                 sb.AppendLine(prefix + "//User after code");
-                sb.AppendLine(prefix+af);
+                sb.AppendLine(prefix + af);
                 sb.AppendLine(prefix + "//User after code end");
             }
             sb.AppendLine();

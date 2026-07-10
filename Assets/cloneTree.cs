@@ -4,8 +4,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Xml;
-using Unity.VisualScripting;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -485,7 +483,7 @@ public class CloneTreeToCodeWindow : EditorWindow
                 if (styles != null)
                 {
                     context.Log.AppendLine($"{GetName()}: {styles.Count} styles");
-                    StyleCodeGen.WriteAssignments(styles, varName, sb,prefix);
+                    StyleCodeGen.WriteAssignments(styles, varName, sb, prefix);
 
                 }
             }

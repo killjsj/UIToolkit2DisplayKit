@@ -20,4 +20,7 @@
         <ui:Label text="123" style="color: rgb(255, 0, 0); -unity-text-outline-width: 1px; -unity-text-outline-color: rgb(0, 255, 22); font-size: 45px; text-shadow: 2px 2px 2px rgb(194, 51, 51); letter-spacing: 12px; word-spacing: 23px; -unity-paragraph-spacing: 12px; -unity-text-auto-size: none; rotate: 10deg; translate: 0% 254%; -unity-font-definition: url(&quot;project://database/Assets/Fonts/LiberationSans.ttf?fileID=12800000&amp;guid=36239efaf3d4f7a4abcf02b96f0fd7ec&amp;type=3#LiberationSans&quot;);"/>
         <ui:Label text="Label"/>
     </ui:VisualElement>
+    <ui:VisualElement style="flex-grow: 1; background-color: rgb(0, 0, 255); translate: 45% -173%; scale: 1 1.2; rotate: 23deg;">
+        <ui:Label text="designing ui  is too esay" style="font-size: 30px; color: rgb(255, 0, 0); -unity-font-definition: url(&quot;project://database/Assets/Fonts/LiberationSans.ttf?fileID=12800000&amp;guid=36239efaf3d4f7a4abcf02b96f0fd7ec&amp;type=3#LiberationSans&quot;); translate: 33% 198%;"/>
+    </ui:VisualElement>
 </ui:UXML>
