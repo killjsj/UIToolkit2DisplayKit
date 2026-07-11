@@ -585,7 +585,7 @@ public class UxmlToCodeWindow : EditorWindow
                     break;
                 case NodeType.Label:
                     sb.AppendLine(prefix + $"// start define of {varName}");
-                    sb.AppendLine(prefix + $"DisplayText {varName} = {parent.GetName()}.AddText(\"{text}\");");
+                    sb.AppendLine(prefix + $"DisplayText {varName} = {parent.GetName()}.AddText(@\"{text}\");");
                     break;
                 case NodeType.UXML:
                     sb.AppendLine(prefix + $"// start define of {varName}");
