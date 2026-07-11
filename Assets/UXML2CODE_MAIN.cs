@@ -109,6 +109,7 @@ public class UxmlToCodeWindow : EditorWindow
         _log_scroll = EditorGUILayout.BeginScrollView(_log_scroll);
         EditorGUILayout.TextArea(_log, GUILayout.ExpandHeight(true));
         EditorGUILayout.EndScrollView();
+
         EditorGUILayout.EndScrollView();
 
         EditorGUILayout.Space();
@@ -242,7 +243,7 @@ public class UxmlToCodeWindow : EditorWindow
         void PrintNodes(Node parent, XmlNodeList nodes, string rootVarname)
         {
             if (_isTemplate && parent == null)
-            {
+            {s
                 Log("illegal args! template=true parent=null! override template to false!");
                 _context.ErrorCount++;
                 _isTemplate = false;
