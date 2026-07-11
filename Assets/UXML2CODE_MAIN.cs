@@ -68,7 +68,7 @@ public class UxmlToCodeWindow : EditorWindow
     {
         EditorGUILayout.LabelField("UXML -> Code", EditorStyles.boldLabel);
         EditorGUILayout.Space();
-        EditorGUILayout.LabelField("Warning! dont use USS!Only extract the data in uxml and template!", EditorStyles.boldLabel);
+        EditorGUILayout.LabelField("Warning! dont use USS(or stylesheet)!Only extract the data in uxml and template!", EditorStyles.boldLabel);
         EditorGUILayout.Space();
 
         asset = (VisualTreeAsset)EditorGUILayout.ObjectField("VisualTreeAsset", asset, typeof(VisualTreeAsset), false);
@@ -243,7 +243,7 @@ public class UxmlToCodeWindow : EditorWindow
         void PrintNodes(Node parent, XmlNodeList nodes, string rootVarname)
         {
             if (_isTemplate && parent == null)
-            {s
+            {
                 Log("illegal args! template=true parent=null! override template to false!");
                 _context.ErrorCount++;
                 _isTemplate = false;
