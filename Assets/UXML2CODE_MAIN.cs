@@ -68,7 +68,7 @@ public class UxmlToCodeWindow : EditorWindow
     {
         EditorGUILayout.LabelField("UXML -> Code", EditorStyles.boldLabel);
         EditorGUILayout.Space();
-        EditorGUILayout.LabelField("Warning! dont use USS!Only extract the data in ui editor", EditorStyles.boldLabel);
+        EditorGUILayout.LabelField("Warning! dont use USS!Only extract the data in uxml and template!", EditorStyles.boldLabel);
         EditorGUILayout.Space();
 
         asset = (VisualTreeAsset)EditorGUILayout.ObjectField("VisualTreeAsset", asset, typeof(VisualTreeAsset), false);
