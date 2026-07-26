@@ -38,6 +38,8 @@ public class UxmlToCodeWindow : EditorWindow
         public string BeforeCode;
         public string AfterCode;
         public bool CustomCodeIncludeCanvas = true;
+        public List<string> ElementNames = new List<string>();   // 新增：收集所有 .BaseElement.name 的值
+
         public ParseContext(int startID, bool alwaysAppendId, bool writePath, StringBuilder log, string beforeCode, string afterCode, bool customCodeIncludeCanvas)
         {
             this.startID = startID;
@@ -48,6 +50,7 @@ public class UxmlToCodeWindow : EditorWindow
             BeforeCode = beforeCode;
             AfterCode = afterCode;
             CustomCodeIncludeCanvas = customCodeIncludeCanvas;
+            ElementNames = new List<string>();   // 初始化列表
         }
 
         public int NextID()
@@ -147,7 +150,8 @@ public class UxmlToCodeWindow : EditorWindow
             Debug.LogError(ex);
             logsb.AppendLine($"An Error has be catched! Exception ex:{ex}");
         }
-        // apply replacements defined in UI (each line: old=>new)
+        GenerateElementNamesEnum(codesb, context, path);
+
         if (!string.IsNullOrEmpty(replacements))
         {
             foreach (var line in replacements.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
@@ -164,6 +168,82 @@ public class UxmlToCodeWindow : EditorWindow
 
         _log = logsb.ToString();
         _output = codesb.ToString();
+    }
+    private void GenerateElementNamesEnum(StringBuilder sb, ParseContext context, string assetPath)
+    {
+        if (context.ElementNames.Count == 0) return;
+        string fileName = Path.GetFileNameWithoutExtension(assetPath);
+        string enumName = SanitizeIdentifier(fileName);
+        if (string.IsNullOrEmpty(enumName))
+            enumName = "ElementNames";
+
+        var distinctNames = context.ElementNames.Distinct().ToList();
+        if (distinctNames.Count == 0) return;
+
+        var usedMembers = new HashSet<string>();
+        var memberLines = new List<string>();
+
+        foreach (var rawName in distinctNames)
+        {
+            string memberBase = SanitizeIdentifier(rawName);
+            if (string.IsNullOrEmpty(memberBase))
+                memberBase = "Unnamed";
+
+            string member = memberBase;
+            int counter = 1;
+            while (usedMembers.Contains(member))
+            {
+                counter++;
+                member = $"{memberBase}_{counter}";
+            }
+            usedMembers.Add(member);
+            memberLines.Add($"\t{member}");
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("#region Element Names Enum");
+        sb.AppendLine($"public enum {enumName}");
+        sb.AppendLine("{");
+        sb.AppendLine(string.Join(",\n", memberLines));
+        sb.AppendLine("}");
+        sb.AppendLine("#endregion");
+        sb.AppendLine();
+    }
+    private string SanitizeIdentifier(string input)
+    {
+        if (string.IsNullOrEmpty(input)) return string.Empty;
+        var sb = new StringBuilder();
+        foreach (char c in input)
+        {
+            if (char.IsLetterOrDigit(c) || c == '_')
+                sb.Append(c);
+            else
+                sb.Append('_');
+        }
+        string result = sb.ToString();
+        if (result.Length > 0 && char.IsDigit(result[0]))
+            result = "_" + result;
+        if (IsCSharpKeyword(result))
+            result = "_" + result;
+        return result;
+    }
+
+    private bool IsCSharpKeyword(string word)
+    {
+        var keywords = new HashSet<string>
+        {
+            "abstract", "as", "base", "bool", "break", "byte", "case", "catch", "char",
+            "checked", "class", "const", "continue", "decimal", "default", "delegate",
+            "do", "double", "else", "enum", "event", "explicit", "extern", "false",
+            "finally", "fixed", "float", "for", "foreach", "goto", "if", "implicit",
+            "in", "int", "interface", "internal", "is", "lock", "long", "namespace",
+            "new", "null", "object", "operator", "out", "override", "params", "private",
+            "protected", "public", "readonly", "ref", "return", "sbyte", "sealed",
+            "short", "sizeof", "stackalloc", "static", "string", "struct", "switch",
+            "this", "throw", "true", "try", "typeof", "uint", "ulong", "unchecked",
+            "unsafe", "ushort", "using", "virtual", "void", "volatile", "while"
+        };
+        return keywords.Contains(word);
     }
 
     public static int StartProcess(string path, StringBuilder codesb, ref ParseContext context, bool template, Node parent, string varname = "", int baseIndent = 0)
@@ -562,7 +642,6 @@ public class UxmlToCodeWindow : EditorWindow
         public void SetVarName(string value) => var_name = value;
         public int ToCode(StringBuilder sb, ref ParseContext context, int indentLevel = -1)
         {
-            //if (indentLevel < 0)
             indentLevel = GetDepth();
 
             int errors = 0;
@@ -601,12 +680,14 @@ public class UxmlToCodeWindow : EditorWindow
                     sb.AppendLine(prefix + $"// start define of {varName}");
                     sb.AppendLine(prefix + $"DisplayElement {varName} = {parent.GetVarName()}.AddElement();");
                     sb.AppendLine(prefix + $"{varName}.BaseElement.name = \"{GetName()}\";");
+                    context.ElementNames.Add(GetName());   // 记录元素名称
                     break;
                 case NodeType.Label:
                     sb.AppendLine(prefix + $"// start define of {varName}");
                     if (!string.IsNullOrEmpty(text)) text = text.Replace("\n", "\\n");
                     sb.AppendLine(prefix + $"DisplayText {varName} = {parent.GetVarName()}.AddText(\"{text}\");");
                     sb.AppendLine(prefix + $"{varName}.BaseElement.name = \"{GetName()}\";");
+                    context.ElementNames.Add(GetName());   // 记录元素名称
                     break;
                 case NodeType.UXML:
                     sb.AppendLine(prefix + $"// start define of {varName}");
