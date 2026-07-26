@@ -15,6 +15,7 @@ public class UxmlToCodeWindow : EditorWindow
     int RootCanvasID = 0;
     bool AlwaysAppendIdOnName = false;
     bool WritePath = true;
+    bool IgnoreText = false;
     bool CustomCodeIncludeCanvas = false;
     string before = "";
     string after = "";
@@ -39,10 +40,11 @@ public class UxmlToCodeWindow : EditorWindow
         public int startID;
         public string BeforeCode;
         public string AfterCode;
+        public bool IgnoreText = false;
         public bool CustomCodeIncludeCanvas = true;
         public List<string> ElementNames = new List<string>();   // 新增：收集所有 .BaseElement.name 的值
 
-        public ParseContext(int startID, bool alwaysAppendId, bool writePath, StringBuilder log, string beforeCode, string afterCode, bool customCodeIncludeCanvas)
+        public ParseContext(int startID, bool alwaysAppendId, bool writePath, StringBuilder log, string beforeCode, string afterCode, bool customCodeIncludeCanvas,bool IgnoreText)
         {
             this.startID = startID;
             CurrentID = startID - 1;
@@ -53,6 +55,7 @@ public class UxmlToCodeWindow : EditorWindow
             AfterCode = afterCode;
             CustomCodeIncludeCanvas = customCodeIncludeCanvas;
             ElementNames = new List<string>();   // 初始化列表
+            this.IgnoreText = IgnoreText;
         }
 
         public int NextID()
@@ -80,6 +83,7 @@ public class UxmlToCodeWindow : EditorWindow
         RootCanvasID = EditorGUILayout.IntField("RootCanvasID", RootCanvasID);
         AlwaysAppendIdOnName = EditorGUILayout.Toggle("Always Append Id On Name", AlwaysAppendIdOnName);
         WritePath = EditorGUILayout.Toggle("Write Path In Message Area", WritePath);
+        IgnoreText = EditorGUILayout.Toggle("Igorne label's scurrent content", IgnoreText);
 
         CustomCodeIncludeCanvas = EditorGUILayout.Toggle("Allow to append code if target is canvas", CustomCodeIncludeCanvas);
 
@@ -145,7 +149,7 @@ public class UxmlToCodeWindow : EditorWindow
         var logsb = new StringBuilder();
         var enumsb = new StringBuilder();
         var path = AssetDatabase.GetAssetPath(asset);
-        var context = new ParseContext(RootCanvasID, AlwaysAppendIdOnName, WritePath, logsb, before, after, CustomCodeIncludeCanvas);
+        var context = new ParseContext(RootCanvasID, AlwaysAppendIdOnName, WritePath, logsb, before, after, !CustomCodeIncludeCanvas, IgnoreText);
         try
         {
             var error = StartProcess(path, codesb, ref context, template: false, parent: null);
@@ -449,7 +453,8 @@ public class UxmlToCodeWindow : EditorWindow
                                     hasName = true;
                                     break;
                                 case "text":
-                                    n.text = attr.Value;
+                                    if(!_context.IgnoreText)
+                                        n.text = attr.Value;
                                     break;
                                 case "style":
                                     n.styles = StyleParser.Parse(attr.Value);
