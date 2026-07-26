@@ -582,11 +582,13 @@ public class UxmlToCodeWindow : EditorWindow
                 case NodeType.VisualElement:
                     sb.AppendLine(prefix + $"// start define of {varName}");
                     sb.AppendLine(prefix + $"DisplayElement {varName} = {parent.GetName()}.AddElement();");
+                    sb.AppendLine(prefix + $"{varName}.BaseElement.name = {varName};");
                     break;
                 case NodeType.Label:
                     sb.AppendLine(prefix + $"// start define of {varName}");
                     if (!string.IsNullOrEmpty(text)) text = text.Replace("\n", "\\n");
                     sb.AppendLine(prefix + $"DisplayText {varName} = {parent.GetName()}.AddText(\"{text}\");");
+                    sb.AppendLine(prefix + $"{varName}.BaseElement.name = {varName};");
                     break;
                 case NodeType.UXML:
                     sb.AppendLine(prefix + $"// start define of {varName}");
@@ -600,7 +602,7 @@ public class UxmlToCodeWindow : EditorWindow
                     context?.Log?.AppendLine("Template Proceed start, try to get path...");
                     if (templateToPath.TryGetValue(template, out var path))
                     {
-                        var ret = StartProcess(path, sb,ref context, true, this.parent, varName, baseIndent: indentLevel + 1);
+                        var ret = StartProcess(path, sb, ref context, true, this.parent, varName, baseIndent: indentLevel + 1);
                     }
                     else
                     {
