@@ -22,8 +22,10 @@ public class UxmlToCodeWindow : EditorWindow
     string replacements = "";
     Vector2 _scroll;
     Vector2 _log_scroll;
+    Vector2 _enum_scroll;
     string _output = string.Empty;
     string _log = string.Empty;
+    string _enum = string.Empty;
     private Vector2 _tscroll;
 
     public class ParseContext
@@ -99,21 +101,27 @@ public class UxmlToCodeWindow : EditorWindow
         }
 
         EditorGUILayout.Space();
-        _tscroll = EditorGUILayout.BeginScrollView(_tscroll);
+
         EditorGUILayout.LabelField("Generated Output:", EditorStyles.boldLabel);
 
         _scroll = EditorGUILayout.BeginScrollView(_scroll);
         EditorGUILayout.TextArea(_output, GUILayout.ExpandHeight(true));
         EditorGUILayout.EndScrollView();
 
-        EditorGUILayout.Space();
+        EditorGUILayout.LabelField("name enum:", EditorStyles.boldLabel);
+
+        _enum_scroll = EditorGUILayout.BeginScrollView(_enum_scroll);
+        EditorGUILayout.TextArea(_enum, GUILayout.ExpandHeight(true));
+        EditorGUILayout.EndScrollView();
+
         EditorGUILayout.LabelField("Log:", EditorStyles.boldLabel);
 
         _log_scroll = EditorGUILayout.BeginScrollView(_log_scroll);
         EditorGUILayout.TextArea(_log, GUILayout.ExpandHeight(true));
         EditorGUILayout.EndScrollView();
 
-        EditorGUILayout.EndScrollView();
+
+
 
         EditorGUILayout.Space();
         if (!string.IsNullOrEmpty(_output))
@@ -135,6 +143,7 @@ public class UxmlToCodeWindow : EditorWindow
         Node.templateToPath.Clear();
         var codesb = new StringBuilder();
         var logsb = new StringBuilder();
+        var enumsb = new StringBuilder();
         var path = AssetDatabase.GetAssetPath(asset);
         var context = new ParseContext(RootCanvasID, AlwaysAppendIdOnName, WritePath, logsb, before, after, CustomCodeIncludeCanvas);
         try
@@ -150,7 +159,7 @@ public class UxmlToCodeWindow : EditorWindow
             Debug.LogError(ex);
             logsb.AppendLine($"An Error has be catched! Exception ex:{ex}");
         }
-        GenerateElementNamesEnum(codesb, context, path);
+        GenerateElementNamesEnum(enumsb, context, path);
 
         if (!string.IsNullOrEmpty(replacements))
         {
@@ -168,6 +177,7 @@ public class UxmlToCodeWindow : EditorWindow
 
         _log = logsb.ToString();
         _output = codesb.ToString();
+        _enum = enumsb.ToString();
     }
     private void GenerateElementNamesEnum(StringBuilder sb, ParseContext context, string assetPath)
     {
@@ -199,15 +209,10 @@ public class UxmlToCodeWindow : EditorWindow
             usedMembers.Add(member);
             memberLines.Add($"\t{member}");
         }
-
-        sb.AppendLine();
-        sb.AppendLine("#region Element Names Enum");
         sb.AppendLine($"public enum {enumName}");
         sb.AppendLine("{");
         sb.AppendLine(string.Join(",\n", memberLines));
         sb.AppendLine("}");
-        sb.AppendLine("#endregion");
-        sb.AppendLine();
     }
     private string SanitizeIdentifier(string input)
     {
