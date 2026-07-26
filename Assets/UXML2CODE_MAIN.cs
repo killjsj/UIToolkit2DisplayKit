@@ -83,7 +83,7 @@ public class UxmlToCodeWindow : EditorWindow
         RootCanvasID = EditorGUILayout.IntField("RootCanvasID", RootCanvasID);
         AlwaysAppendIdOnName = EditorGUILayout.Toggle("Always Append Id On Name", AlwaysAppendIdOnName);
         WritePath = EditorGUILayout.Toggle("Write Path In Message Area", WritePath);
-        IgnoreText = EditorGUILayout.Toggle("Igorne label's scurrent content", IgnoreText);
+        IgnoreText = EditorGUILayout.Toggle("Igorne label's current content", IgnoreText);
 
         CustomCodeIncludeCanvas = EditorGUILayout.Toggle("Allow to append code if target is canvas", CustomCodeIncludeCanvas);
 
