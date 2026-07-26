@@ -359,7 +359,8 @@ public class UxmlToCodeWindow : EditorWindow
                                     string rawName = attr.Value;
                                     string finalName = GenerateUniqueName(rawName, id, out _);
                                     if (_isTemplate && istemplateRoot) finalName = rootVarname;
-                                    n.SetName(finalName);
+                                    n.SetName(rawName);
+                                    n.SetVarName(finalName);
                                     hasName = true;
                                     break;
                                 case "text":
@@ -381,11 +382,13 @@ public class UxmlToCodeWindow : EditorWindow
                             string autoName = GenerateUniqueName(t.ToString(), id, out _);
                             if (istemplateRoot == true) autoName = rootVarname;
                             n.SetName(autoName);
+                            n.SetVarName(autoName);
                         }
                         if (t == NodeType.UXML)
                         {
                             string canvasName = GenerateUniqueName("canvas", id, out _);
                             n.SetName(canvasName);
+                            n.SetVarName(canvasName);
                         }
                         if (_context.WritePath)
                         {
@@ -512,6 +515,8 @@ public class UxmlToCodeWindow : EditorWindow
         public int indexInParent = 0;
         public string _name;
         public Node EndOfTemplate;
+        public string var_name;
+
         public int GetDepth()
         {
             int depth = -1;
@@ -540,15 +545,28 @@ public class UxmlToCodeWindow : EditorWindow
             }
             return _name;
         }
+        public string GetVarName(StringBuilder log = null)
+        {
+            if (string.IsNullOrEmpty(var_name))
+            {
+
+                var newName = $"{type}_{id}";
+
+                log?.AppendLine($"_name = null! type:{type} id:{id} setting _name to {newName}");
+                var_name = newName;
+            }
+            return var_name;
+        }
 
         public void SetName(string value) => _name = value;
+        public void SetVarName(string value) => var_name = value;
         public int ToCode(StringBuilder sb, ref ParseContext context, int indentLevel = -1)
         {
             //if (indentLevel < 0)
             indentLevel = GetDepth();
 
             int errors = 0;
-            var varName = GetName(context?.Log);
+            var varName = GetVarName();
             string prefix = Indent(indentLevel);
 
             if (!string.IsNullOrEmpty(message))
@@ -581,14 +599,14 @@ public class UxmlToCodeWindow : EditorWindow
             {
                 case NodeType.VisualElement:
                     sb.AppendLine(prefix + $"// start define of {varName}");
-                    sb.AppendLine(prefix + $"DisplayElement {varName} = {parent.GetName()}.AddElement();");
-                    sb.AppendLine(prefix + $"{varName}.BaseElement.name = \"{varName}\";");
+                    sb.AppendLine(prefix + $"DisplayElement {varName} = {parent.GetVarName()}.AddElement();");
+                    sb.AppendLine(prefix + $"{varName}.BaseElement.name = \"{GetName()}\";");
                     break;
                 case NodeType.Label:
                     sb.AppendLine(prefix + $"// start define of {varName}");
                     if (!string.IsNullOrEmpty(text)) text = text.Replace("\n", "\\n");
-                    sb.AppendLine(prefix + $"DisplayText {varName} = {parent.GetName()}.AddText(\"{text}\");");
-                    sb.AppendLine(prefix + $"{varName}.BaseElement.name = \"{varName}\";");
+                    sb.AppendLine(prefix + $"DisplayText {varName} = {parent.GetVarName()}.AddText(\"{text}\");");
+                    sb.AppendLine(prefix + $"{varName}.BaseElement.name = \"{GetName()}\";");
                     break;
                 case NodeType.UXML:
                     sb.AppendLine(prefix + $"// start define of {varName}");
